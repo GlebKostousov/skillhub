@@ -16,7 +16,7 @@ from skillhub.docx_export._placeholders import (
     section_items,
 )
 from skillhub.docx_export._sanitize import sanitize_docx_text
-from skillhub.protocol._models import Protocol
+from skillhub.protocol.models import Protocol
 
 
 class _TextCell(TypingProtocol):

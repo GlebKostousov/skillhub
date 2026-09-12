@@ -33,6 +33,8 @@ source_modules =
     skillhub.docx_export
 forbidden_modules =
     skillhub.protocol._parser
+    skillhub.protocol._draft
+    skillhub.protocol._renderer
     skillhub.web
     skillhub.registry
     skillhub.llm

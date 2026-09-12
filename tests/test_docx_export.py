@@ -128,7 +128,12 @@ def test_document_has_only_internal_text_relationships() -> None:
 
 
 def test_docx_export_imports_only_public_protocol_model() -> None:
-    """Проверяет, что пакет экспорта не тянет parser и соседние слайсы."""
+    """Проверяет, что пакет экспорта берёт модель без parser и renderer."""
+    imported = [
+        module
+        for source_path in _docx_sources()
+        for module in _imported_modules(source_path)
+    ]
     violations = [
         f"{source_path.name}:{module}"
         for source_path in _docx_sources()
@@ -136,6 +141,7 @@ def test_docx_export_imports_only_public_protocol_model() -> None:
         if _is_forbidden_docx_import(module)
     ]
 
+    assert "skillhub.protocol.models" in imported
     assert violations == []
 
 
@@ -300,6 +306,9 @@ def _is_forbidden_docx_import(module: str) -> bool:
     forbidden = {
         "skillhub.protocol",
         "skillhub.protocol._parser",
+        "skillhub.protocol._draft",
+        "skillhub.protocol._renderer",
+        "skillhub.protocol._models",
         "skillhub.web",
         "skillhub.registry",
         "skillhub.llm",

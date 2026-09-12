@@ -83,7 +83,10 @@ class _ProtocolRoutes:
         return self._templates.TemplateResponse(
             request=request,
             name="protocol.html",
-            context={"csrf_token": self._csrf_token},
+            context={
+                "csrf_token": self._csrf_token,
+                "generation_available": self._generator is not None,
+            },
         )
 
     async def draft(self, request: Request) -> Response:

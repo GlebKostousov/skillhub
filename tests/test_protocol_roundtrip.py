@@ -2,10 +2,19 @@
 
 from pathlib import Path
 
+import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
+from pydantic import ValidationError
 
-from skillhub.protocol import PLACEHOLDER, Protocol, ProtocolTask, parse, render
+from skillhub.protocol import (
+    GRAMMAR_VERSION,
+    PLACEHOLDER,
+    Protocol,
+    ProtocolTask,
+    parse,
+    render,
+)
 
 _EXAMPLE = (
     Path(__file__).resolve().parents[1]
@@ -42,6 +51,41 @@ def test_empty_sections_render_as_placeholder_and_roundtrip() -> None:
     assert "## Открытые вопросы\n- —" in rendered
     assert "| Задача |" not in rendered
     assert parse(rendered) == protocol
+
+
+def test_pipe_in_task_fields_is_rejected() -> None:
+    """Проверяет отказ полей задачи с вертикальной чертой таблицы."""
+    with pytest.raises(ValidationError):
+        ProtocolTask(title="A|B", assignee="Анна", due="2026-09-15")
+    with pytest.raises(ValidationError):
+        ProtocolTask(title="Задача", assignee="Анна|Борис", due="2026-09-15")
+    with pytest.raises(ValidationError):
+        ProtocolTask(title="Задача", assignee="Анна", due="2026-09|15")
+
+
+def test_pipe_in_rendered_task_cells_roundtrips_as_slash() -> None:
+    """Проверяет разбор воспроизведения после замены вертикальной черты."""
+    protocol = Protocol.model_construct(
+        title="Тема",
+        date=PLACEHOLDER,
+        participants=("Анна",),
+        discussion=("пункт",),
+        decisions=("решение",),
+        tasks=(
+            ProtocolTask.model_construct(
+                title="A|B",
+                assignee="C|D",
+                due="E|F",
+            ),
+        ),
+        open_questions=("вопрос",),
+        grammar_version=GRAMMAR_VERSION,
+    )
+    parsed = parse(render(protocol))
+
+    assert parsed.tasks == (
+        ProtocolTask(title="A/B", assignee="C/D", due="E/F"),
+    )
 
 
 _SAFE_CHARS = st.characters(

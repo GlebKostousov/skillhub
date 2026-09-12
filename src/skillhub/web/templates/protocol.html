@@ -23,7 +23,12 @@
         rows="8"
         maxlength="1048576"
       ></textarea>
-      <button class="btn btn-primary" type="button" id="protocol-draft-button">
+      {% if not generation_available %}
+        <div class="alert alert-warning" role="alert" id="protocol-generation-unavailable">
+          Генерация черновика недоступна.
+        </div>
+      {% endif %}
+      <button class="btn btn-primary" type="button" id="protocol-draft-button"{% if not generation_available %} disabled{% endif %}>
         Собрать черновик
       </button>
     </div>
@@ -39,14 +44,19 @@
         rows="16"
         maxlength="65536"
       ></textarea>
+      <div id="protocol-error" class="alert alert-danger d-none" role="alert" aria-live="assertive">
+        <p id="protocol-error-message" class="mb-1"></p>
+        <p id="protocol-error-line" class="mb-1"></p>
+        <p id="protocol-error-expected" class="mb-1"></p>
+        <p id="protocol-error-got" class="mb-0"></p>
+      </div>
       <button class="btn btn-outline-primary" type="button" id="protocol-download-button">
         Выгрузить Word
       </button>
     </div>
   </section>
 
-  <p id="protocol-status" class="visually-hidden" role="status" aria-live="polite"></p>
-  <p id="protocol-error" role="alert" aria-live="assertive"></p>
+  <p id="protocol-status" role="status" aria-live="polite"></p>
 {% endblock %}
 
 {% block scripts %}

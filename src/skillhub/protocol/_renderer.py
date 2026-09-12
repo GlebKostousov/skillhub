@@ -12,6 +12,9 @@ from skillhub.protocol._constants import (
 )
 from skillhub.protocol._models import Protocol, ProtocolTask
 
+_CELL_DELIMITER = "|"
+_CELL_REPLACEMENT = "/"
+
 
 def render(protocol: Protocol) -> str:
     """Возвращает нормативный Markdown для переданного протокола.
@@ -67,5 +70,15 @@ def _task_block(tasks: tuple[ProtocolTask, ...]) -> str:
 def _task_lines(tasks: tuple[ProtocolTask, ...]) -> tuple[str, ...]:
     if not tasks:
         return (EMPTY_ITEM,)
-    rows = tuple(f"| {task.title} | {task.assignee} | {task.due} |" for task in tasks)
+    rows = tuple(
+        (
+            f"| {_task_cell(task.title)} | {_task_cell(task.assignee)} | "
+            f"{_task_cell(task.due)} |"
+        )
+        for task in tasks
+    )
     return (TASK_HEADER, TASK_SEPARATOR, *rows)
+
+
+def _task_cell(value: str) -> str:
+    return value.replace(_CELL_DELIMITER, _CELL_REPLACEMENT)

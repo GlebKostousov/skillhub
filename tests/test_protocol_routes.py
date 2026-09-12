@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from docx import Document
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.testclient import TestClient
 from httpx2 import Response
@@ -119,10 +120,40 @@ def test_protocol_page_renders_draft_and_download_controls() -> None:
     assert "<h1" in response.text
     assert "Протокол встречи" in response.text
     assert "Выгрузить Word" in response.text
+    assert "Генерация черновика недоступна." in response.text
+    assert 'id="protocol-draft-button" disabled' in response.text
+    assert 'id="protocol-download-button"' in response.text
+    assert 'id="protocol-markdown"' in response.text
+    assert "alert-danger" in response.text
+    assert 'id="protocol-status"' in response.text
+    assert 'id="protocol-status" class="visually-hidden"' not in response.text
     assert "/static/protocol.js" in response.text
     assert len(parser.tokens) == 1
-    assert "innerHTML" not in _PROTOCOL_JS.read_text(encoding="utf-8")
-    assert "textContent" in _PROTOCOL_JS.read_text(encoding="utf-8")
+    script = _PROTOCOL_JS.read_text(encoding="utf-8")
+    assert "innerHTML" not in script
+    assert "textContent" in script
+    assert "try" in script
+    assert "catch" in script
+    assert "Запрос не выполнен. Проверьте соединение и повторите." in script
+    assert "Собирается черновик…" in script
+    assert "Готовится Word…" in script
+    assert "error.expected" in script
+    assert "error.got" in script
+    assert "error.line" in script
+
+
+def test_protocol_page_enables_draft_when_generation_available() -> None:
+    """Проверяет рабочую кнопку черновика при подключённом порте генерации."""
+    client = _router_client(
+        _FakeGenerator(GeneratedDraft(text=_VALID_MARKDOWN, finish_reason="stop")),
+    )
+    response = client.get("/protocol")
+
+    assert response.status_code == 200
+    assert "Генерация черновика недоступна." not in response.text
+    assert 'id="protocol-draft-button" disabled' not in response.text
+    assert 'id="protocol-draft-button"' in response.text
+    assert "Выгрузить Word" in response.text
 
 
 def test_draft_without_generator_is_unavailable() -> None:
@@ -411,6 +442,7 @@ def _router_client(generator: _FakeGenerator) -> TestClient:
     """
     templates = Jinja2Templates(directory=_TEMPLATES)
     app = FastAPI()
+    app.mount("/static", StaticFiles(directory=_WEB_ROOT / "static"), name="static")
     app.include_router(
         create_protocol_router(
             templates,

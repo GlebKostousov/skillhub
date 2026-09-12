@@ -12,9 +12,9 @@ from skillhub.protocol._draft import (
     create_draft,
 )
 from skillhub.protocol._errors import ProtocolGenerationError, ProtocolParseError
-from skillhub.protocol._models import Protocol, ProtocolTask
 from skillhub.protocol._parser import parse
 from skillhub.protocol._renderer import render
+from skillhub.protocol.models import Protocol, ProtocolTask
 
 __all__ = [
     "GRAMMAR_VERSION",
