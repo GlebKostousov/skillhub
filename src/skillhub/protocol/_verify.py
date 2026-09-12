@@ -128,9 +128,10 @@ def _task_claims(index: int, task: ProtocolTask) -> list[tuple[str, str]]:
 
 
 def _unconfirmed_reason(prepared: str, text: str) -> str | None:
+    needle = _normalize(text).rstrip(".,;:!?")
     hits: set[_Hit] = set()
-    for window in _windows(prepared, text):
-        hits.update(_classify_window(window))
+    for window in _windows(prepared, needle):
+        hits.update(_classify_window(window, needle))
     if "attack" in hits:
         return _REASON_ATTACK
     if "confirm" in hits and "negate" in hits:
@@ -142,8 +143,7 @@ def _unconfirmed_reason(prepared: str, text: str) -> str | None:
     return _REASON_NO_MARKER
 
 
-def _windows(prepared: str, text: str) -> tuple[str, ...]:
-    needle = _normalize(text).rstrip(".,;:!?")
+def _windows(prepared: str, needle: str) -> tuple[str, ...]:
     if not needle:
         return ()
     return tuple(
@@ -151,11 +151,11 @@ def _windows(prepared: str, text: str) -> tuple[str, ...]:
     )
 
 
-def _classify_window(window: str) -> set[_Hit]:
+def _classify_window(window: str, needle: str) -> set[_Hit]:
     hits: set[_Hit] = set()
     if _has_any(window, _ATTACK):
         hits.add("attack")
-    if _has_any(window, _NEGATE):
+    if _has_any(window, _NEGATE) or f"не {needle}" in window:
         hits.add("negate")
     remainder = window
     for phrase in _NEGATE:

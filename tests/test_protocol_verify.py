@@ -41,6 +41,20 @@ def test_explicit_decision_marker_confirms_without_speaker_labels() -> None:
     assert flagged == ()
 
 
+def test_negation_particle_before_needle_does_not_confirm_decision() -> None:
+    """Проверяет, что «не» перед формулировкой не подтверждает решение."""
+    protocol = _protocol()
+
+    flagged = verify(protocol, "решили не включить показатели продаж")
+
+    assert flagged == (
+        UnconfirmedClaim(
+            target="decision:0",
+            reason="В материале есть противоречие по этому утверждению.",
+        ),
+    )
+
+
 def test_discussion_does_not_confirm_decision() -> None:
     """Проверяет, что обсуждение не подтверждает решение."""
     protocol = _protocol()
