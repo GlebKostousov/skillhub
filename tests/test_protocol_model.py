@@ -177,7 +177,9 @@ def test_extra_task_field_is_rejected() -> None:
         )
 
 
-def test_facade_does_not_export_parse() -> None:
-    """Проверяет отсутствие разбора текста на фасаде модели."""
-    assert "parse" not in protocol_facade.__all__
-    assert not hasattr(protocol_facade, "parse")
+def test_facade_exports_parse_and_render() -> None:
+    """Проверяет наличие разбора и воспроизведения на публичном фасаде."""
+    assert "parse" in protocol_facade.__all__
+    assert "render" in protocol_facade.__all__
+    assert hasattr(protocol_facade, "parse")
+    assert hasattr(protocol_facade, "render")
