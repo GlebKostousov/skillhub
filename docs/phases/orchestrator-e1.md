@@ -275,7 +275,7 @@ Architect: `ba5bd91f-e8b5-4ce0-aee0-c4f76ef170cd`.
 1. Каждый слайс имеет зелёную verify, полный handoff по явным поверхностям и `OPEN = 0`.
 2. Полный проектный gate проходит: Ruff, mypy strict, import-linter, pytest и релевантные security/Git checks.
 3. Один `docs-analyst` обновляет as-built, путь запуска и документацию публичных контрактов всего E1.
-4. Ветка `orch/e1` сохраняется; временные worktree этого прогона удаляются; исходный checkout владельца не меняется.
+4. Код эпика сдан squash в `main` (`3dca19f`); ветка `orch/e1` удалена; временные worktree прогона снимаются.
 
 ### Реестр сдачи эпика E1
 
