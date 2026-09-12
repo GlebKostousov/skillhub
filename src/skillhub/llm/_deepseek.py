@@ -7,35 +7,38 @@ from typing import Any, cast
 import httpx
 import structlog
 
-from skillhub.llm._constants import (
-    DEEPSEEK_API_KEY_ENV,
-    DEEPSEEK_API_URL,
-    DEEPSEEK_MODEL,
-    HTTP_OK,
-    MAX_OUTPUT_TOKENS,
-    REQUEST_TIMEOUT_SECONDS,
-    TEMPERATURE,
-)
+from skillhub.llm._constants import DEEPSEEK_API_KEY_ENV, DEEPSEEK_API_URL, HTTP_OK
 from skillhub.llm._errors import GenerationUnavailableError, ProviderError
 from skillhub.llm._models import LlmGateway, LlmRequest, LlmResult, LlmUsage
+from skillhub.runtime import OverlayValues, RuntimeStore
+from skillhub.runtime._schema import seed_values
+
+_UNUSED_REASONING_EFFORT = "high"
+_UNUSED_TOP_P = 1.0
+_UNUSED_PENALTY = 0
+_UNUSED_RESPONSE_FORMAT = "text"
 
 
 class DeepSeekLlmGateway(LlmGateway):
     """Отправляет один запрос к фиксированному адресу DeepSeek."""
 
-    def __init__(self, *, client: httpx.Client | None = None) -> None:
-        """Сохраняет HTTP-клиент без чтения ключа.
+    def __init__(
+        self,
+        *,
+        client: httpx.Client | None = None,
+        store: RuntimeStore | None = None,
+    ) -> None:
+        """Сохраняет HTTP-клиент и источник снимка без чтения ключа.
 
         Args:
             client: готовый клиент или штатный клиент пакета.
+            store: хранилище runtime-настроек или посев констант.
         """
-        self._client = client or httpx.Client(
-            timeout=REQUEST_TIMEOUT_SECONDS,
-            follow_redirects=False,
-        )
+        self._client = client or httpx.Client(follow_redirects=False)
+        self._store = store
 
     def complete(self, request: LlmRequest) -> LlmResult:
-        """Выполняет один вызов поставщика.
+        """Выполняет один вызов поставщика по замороженному снимку.
 
         Args:
             request: типизированный запрос без пользовательского URL.
@@ -44,8 +47,15 @@ class DeepSeekLlmGateway(LlmGateway):
             Успешный результат с текстом, причиной и usage.
         """
         _reject_user_url(request)
-        api_key = _require_api_key()
-        return _complete_once(self._client, api_key, request)
+        api_key = _resolve_api_key()
+        values = _snapshot_values(self._store)
+        return _complete_once(self._client, api_key, request, values)
+
+
+def _snapshot_values(store: RuntimeStore | None) -> OverlayValues:
+    if store is None:
+        return seed_values(None)
+    return store.snapshot().values
 
 
 def _reject_user_url(request: object) -> None:
@@ -54,7 +64,7 @@ def _reject_user_url(request: object) -> None:
         raise ProviderError from None
 
 
-def _require_api_key() -> str:
+def _resolve_api_key() -> str:
     raw_key = os.environ.get(DEEPSEEK_API_KEY_ENV)
     if raw_key is None or not raw_key.strip():
         structlog.get_logger(__name__).warning(
@@ -69,6 +79,7 @@ def _complete_once(
     client: httpx.Client,
     api_key: str,
     request: LlmRequest,
+    values: OverlayValues,
 ) -> LlmResult:
     try:
         response = client.post(
@@ -77,21 +88,41 @@ def _complete_once(
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
-            json={
-                "model": DEEPSEEK_MODEL,
-                "messages": [
-                    {"role": message.role, "content": message.content}
-                    for message in request.messages
-                ],
-                "max_tokens": MAX_OUTPUT_TOKENS,
-                "temperature": TEMPERATURE,
-                "stream": False,
-            },
+            json=_provider_body(request, values),
+            timeout=values.timeout,
         )
     except httpx.HTTPError:
         _log_provider_error()
         raise ProviderError from None
     return _parse_response(response)
+
+
+def _provider_body(request: LlmRequest, values: OverlayValues) -> dict[str, object]:
+    body: dict[str, object] = {
+        "model": values.model,
+        "messages": [
+            {"role": message.role, "content": message.content}
+            for message in request.messages
+        ],
+        "max_tokens": values.max_tokens,
+        "temperature": values.temperature,
+        "stream": False,
+    }
+    if values.thinking == "disabled":
+        body["thinking"] = {"type": "disabled"}
+    if values.reasoning_effort != _UNUSED_REASONING_EFFORT:
+        body["reasoning_effort"] = values.reasoning_effort
+    if values.top_p != _UNUSED_TOP_P:
+        body["top_p"] = values.top_p
+    if values.frequency_penalty != _UNUSED_PENALTY:
+        body["frequency_penalty"] = values.frequency_penalty
+    if values.presence_penalty != _UNUSED_PENALTY:
+        body["presence_penalty"] = values.presence_penalty
+    if values.stop:
+        body["stop"] = list(values.stop)
+    if values.response_format != _UNUSED_RESPONSE_FORMAT:
+        body["response_format"] = {"type": values.response_format}
+    return body
 
 
 def _parse_response(response: httpx.Response) -> LlmResult:
