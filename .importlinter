@@ -62,6 +62,7 @@ forbidden_modules =
     skillhub.protocol._parser
     skillhub.protocol._draft
     skillhub.protocol._renderer
+    skillhub.protocol._clarifications
     skillhub.web
     skillhub.registry
     skillhub.llm

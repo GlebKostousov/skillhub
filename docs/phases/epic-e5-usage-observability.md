@@ -1,6 +1,6 @@
 # E5. Стоимость и наблюдаемость
 
-Статус: не начат
+Статус: принят. As-built: тарифы YAML, `UsageLedger`, `MeteredLlmGateway`, `GET /usage` и `GET /api/usage`.
 Вес: 8 единиц
 Зависит от: E2
 

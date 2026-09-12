@@ -1,5 +1,7 @@
 """Определяет неизменяемую нормативную модель протокола."""
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from skillhub.protocol._constants import GRAMMAR_VERSION
@@ -66,3 +68,23 @@ class Protocol(BaseModel):
     tasks: tuple[ProtocolTask, ...]
     open_questions: tuple[str, ...]
     grammar_version: str = GRAMMAR_VERSION
+
+
+class Clarification(BaseModel):
+    """Описывает один вопрос к пропущенному полю протокола.
+
+    Attributes:
+        id: стабильный идентификатор уточнения.
+        target: целевое поле, которое можно записать ответом.
+        reason: причина вопроса.
+        hint: подсказка для ответа.
+        status: состояние строки уточнения.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str
+    target: str
+    reason: str
+    hint: str
+    status: Literal["pending", "answered", "skipped"]
