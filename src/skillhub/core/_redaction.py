@@ -23,6 +23,9 @@ _DIAGNOSTIC_FIELDS = frozenset(
         "skill_path",
         "level",
         "timestamp",
+        "cost_nanos",
+        "duration_ms",
+        "status",
     }
 )
 _MAX_DIAGNOSTIC_FIELD_LENGTH = max(map(len, _DIAGNOSTIC_FIELDS))

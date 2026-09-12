@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Расходы — SkillHub{% endblock %}
+
+{% block content %}
+  <header class="mb-4">
+    <p class="text-body-secondary mb-2">Журнал модельных вызовов</p>
+    <h1 class="display-6 mb-3">Расходы</h1>
+    <p class="lead mb-0">
+      Стоимость текущего запроса и итог за сегодня по UTC.
+    </p>
+  </header>
+
+  <section class="card border-0 shadow-sm mb-4" aria-labelledby="current-heading">
+    <div class="card-body p-4">
+      <h2 id="current-heading" class="h4">Текущий запрос</h2>
+      {% if current %}
+        <p class="mb-1">Идентификатор: {{ current.request_id }}</p>
+        <p class="mb-0">Стоимость: {{ current.cost_nanos }} {{ current.currency }}</p>
+      {% else %}
+        <p class="mb-0">n/a</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="card border-0 shadow-sm mb-4" aria-labelledby="today-heading">
+    <div class="card-body p-4">
+      <h2 id="today-heading" class="h4">Сегодня</h2>
+      <p class="mb-1">Дата UTC: {{ today.date }}</p>
+      <p class="mb-1">Зафиксировано: {{ today.committed_nanos }}</p>
+      <p class="mb-1">Резерв: {{ today.reserved_nanos }}</p>
+      <p class="mb-0">
+        Лимит:
+        {% if today.limit_nanos is none %}
+          n/a
+        {% else %}
+          {{ today.limit_nanos }}
+        {% endif %}
+      </p>
+    </div>
+  </section>
+
+  <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+    <h2 class="h4 mb-0">Журнал</h2>
+    <p class="mb-0" role="status" aria-live="polite">Записей: {{ entries | length }}</p>
+  </div>
+
+  {% if entries %}
+    <section class="card border-0 shadow-sm" aria-label="Последние записи">
+      <div class="card-body p-4">
+        <div class="table-responsive">
+          <table class="table mb-0">
+            <thead>
+              <tr>
+                <th scope="col">request_id</th>
+                <th scope="col">operation</th>
+                <th scope="col">skill</th>
+                <th scope="col">model</th>
+                <th scope="col">cost_nanos</th>
+                <th scope="col">currency</th>
+                <th scope="col">status</th>
+                <th scope="col">created_at</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in entries %}
+                <tr>
+                  <td>{{ item.request_id }}</td>
+                  <td>{{ item.operation }}</td>
+                  <td>{% if item.skill %}{{ item.skill }}{% else %}n/a{% endif %}</td>
+                  <td>{{ item.model }}</td>
+                  <td>{{ item.cost_nanos }}</td>
+                  <td>{{ item.currency }}</td>
+                  <td>{{ item.status }}</td>
+                  <td>{{ item.created_at }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  {% else %}
+    <section class="card border-0 shadow-sm" aria-label="Пустой журнал">
+      <div class="card-body p-4">
+        <h2 class="h5">Записей расходов пока нет.</h2>
+        <p class="mb-3">Суммы появятся после вызовов модели.</p>
+        <a class="touch-target" href="/">Вернуться на главную</a>
+      </div>
+    </section>
+  {% endif %}
+{% endblock %}

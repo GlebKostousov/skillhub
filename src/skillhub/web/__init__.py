@@ -10,6 +10,12 @@ from skillhub.web.errors import install_error_handlers
 from skillhub.web.protocol_routes import create_protocol_router
 from skillhub.web.routes import create_router
 from skillhub.web.security import SecurityHeadersMiddleware
+from skillhub.web.usage_routes import (
+    LoggingLlmGateway as LoggingLlmGateway,
+)
+from skillhub.web.usage_routes import (
+    create_usage_router as create_usage_router,
+)
 
 __all__ = [
     "ProcessErrorBoundary",

@@ -3,28 +3,32 @@
 import secrets
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from skillhub import web
 from skillhub._server_logging import configure_server_logging
 from skillhub.core import Settings, configure_logging
-from skillhub.llm import DeepSeekLlmGateway, LlmGateway
+from skillhub.llm import DeepSeekLlmGateway, LlmGateway, MeteredLlmGateway
 from skillhub.registry import SkillRegistry
+from skillhub.usage import UsageLedger, load_tariffs
 from skillhub.web import (
+    LoggingLlmGateway,
     ProcessErrorBoundary,
     SecurityHeadersMiddleware,
     StrictHostMiddleware,
     TrustedHostEnvelopeMiddleware,
     create_protocol_router,
     create_router,
+    create_usage_router,
     install_error_handlers,
 )
 
 _WEB_DIR = Path(__file__).parent / "web"
 _DEFAULT_SKILLS_ROOT = Path("skills")
 _ALLOWED_HOSTS = ("127.0.0.1", "localhost", "testserver")
+_TARIFFS_PATH = Path(__file__).resolve().parents[2] / "config" / "model-tariffs.yaml"
 
 
 def create_app(
@@ -47,9 +51,10 @@ def create_app(
     registry = SkillRegistry(skills_root or _DEFAULT_SKILLS_ROOT)
     registry.reload()
     csrf_token = secrets.token_urlsafe(32)
-    gateway = llm_gateway if llm_gateway is not None else DeepSeekLlmGateway()
+    inner, gateway, ledger = _build_usage_gateway(llm_gateway, settings)
     app = FastAPI(title="SkillHub", debug=False)
-    app.state.llm_gateway = gateway
+    app.state.llm_gateway = inner
+    app.state.usage_ledger = ledger
     app.add_middleware(
         TrustedHostEnvelopeMiddleware,
         allowed_hosts=_ALLOWED_HOSTS,
@@ -90,5 +95,48 @@ def create_app(
             generator=None,
         )
     )
+    _attach_usage_routes(
+        app,
+        create_usage_router(
+            templates,
+            ledger=ledger,
+            daily_budget_nanos=settings.daily_budget_nanos,
+        ),
+    )
     install_error_handlers(app)
     return app
+
+
+def _attach_usage_routes(app: FastAPI, router: APIRouter) -> None:
+    """Подключает маршруты расходов без отдельного included-router.
+
+    Args:
+        app: собираемое приложение.
+        router: маршрутизатор страницы и JSON расходов.
+    """
+    app.routes.extend(router.routes)
+
+
+def _build_usage_gateway(
+    llm_gateway: LlmGateway | None,
+    settings: Settings,
+) -> tuple[LlmGateway, LlmGateway, UsageLedger]:
+    """Оборачивает шлюз учётом лимита и диагностическим логом.
+
+    Args:
+        llm_gateway: явный внутренний шлюз или производственный адаптер.
+        settings: проверенная конфигурация журнала и дневного потолка.
+
+    Returns:
+        Внутренний шов, учётный шлюз и открытый журнал расходов.
+    """
+    ledger = UsageLedger(settings.usage_path)
+    catalog = load_tariffs(_TARIFFS_PATH)
+    inner = llm_gateway if llm_gateway is not None else DeepSeekLlmGateway()
+    metered = MeteredLlmGateway(
+        inner,
+        ledger,
+        catalog,
+        settings.daily_budget_nanos,
+    )
+    return inner, LoggingLlmGateway(metered, ledger), ledger
