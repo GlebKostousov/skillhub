@@ -1,0 +1,39 @@
+"""Определяет типизированные отказы загрузки и расчёта тарифов."""
+
+from skillhub.core import SkillHubError
+
+
+class TariffError(SkillHubError):
+    """Описывает отказ принять конфигурацию тарифов."""
+
+    code = "invalid_tariff"
+    status_code = 400
+    public_message = "Конфигурация тарифов отклонена."
+
+
+class UnknownFieldError(TariffError):
+    """Описывает неизвестное поле в конфигурации тарифов."""
+
+    code = "unknown_field"
+    public_message = "Конфигурация тарифов содержит неизвестное поле."
+
+
+class UnknownModelError(TariffError):
+    """Описывает модель, которой нет в загруженном каталоге."""
+
+    code = "unknown_model"
+    public_message = "Тариф запрошенной модели отсутствует."
+
+
+class InvalidPriceError(TariffError):
+    """Описывает отрицательную или вещественную цену."""
+
+    code = "invalid_price"
+    public_message = "Цена тарифа отклонена."
+
+
+class InvalidCurrencyError(TariffError):
+    """Описывает валюту, отличную от USD."""
+
+    code = "invalid_currency"
+    public_message = "Валюта тарифа должна быть USD."
