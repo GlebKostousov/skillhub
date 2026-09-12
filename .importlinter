@@ -3,10 +3,21 @@ root_packages =
     skillhub
 
 [importlinter:contract:core-independence]
-name = Core does not import web or composition roots
+name = Core does not import web, llm or composition roots
 type = forbidden
 source_modules =
     skillhub.core
+forbidden_modules =
+    skillhub.web
+    skillhub.llm
+    skillhub.app_factory
+    skillhub.main
+
+[importlinter:contract:llm-independence]
+name = LLM does not import web or composition roots
+type = forbidden
+source_modules =
+    skillhub.llm
 forbidden_modules =
     skillhub.web
     skillhub.app_factory

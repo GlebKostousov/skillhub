@@ -29,6 +29,11 @@ body {
   overflow-wrap: anywhere;
 }
 
+[data-assistant-result] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .btn,
 .form-control,
 nav a,
