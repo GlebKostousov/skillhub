@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from html.parser import HTMLParser
@@ -205,6 +206,35 @@ def test_current_cost_unit_is_nano_usd_not_bare_dollars(usage_path: Path) -> Non
     assert ">currency<" not in table_head
 
 
+def test_reserved_row_appears_in_today_json(usage_path: Path) -> None:
+    """Проверяет, что открытый reserve попадает в today.reserved_nanos."""
+    ledger = UsageLedger(usage_path)
+    ledger.reserve(_reserved_event(250, datetime.now(UTC)), daily_budget_nanos=1_000)
+
+    payload = TestClient(create_app()).get("/api/usage").json()
+
+    assert payload["today"]["reserved_nanos"] == 250
+    assert payload["today"]["committed_nanos"] == 0
+
+
+def test_today_amounts_are_labeled_nano_usd(
+    usage_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Проверяет подпись нано-USD у committed, reserved и заданного лимита."""
+    monkeypatch.setenv("SKILLHUB_DAILY_BUDGET_NANOS", "1000")
+    UsageLedger(usage_path).record(
+        _committed_event("req-today-unit", 111, datetime.now(UTC)),
+    )
+    page = TestClient(create_app()).get("/usage")
+    today_block = _section_between(page.text, "Сегодня", "Журнал")
+
+    assert "111 нано-USD" in today_block
+    assert "0 нано-USD" in today_block
+    assert "1000 нано-USD" in today_block
+    assert "n/a" not in today_block
+
+
 def test_null_limit_renders_as_na(usage_path: Path) -> None:
     """Проверяет отображение n/a, когда дневной потолок не задан."""
     del usage_path
@@ -213,7 +243,14 @@ def test_null_limit_renders_as_na(usage_path: Path) -> None:
     page = client.get("/usage")
 
     assert payload["today"]["limit_nanos"] is None
+    assert "n/a" in _section_between(page.text, "Сегодня", "Журнал")
     assert "n/a" in page.text
+
+
+def _reserved_event(cost_nanos: int, created_at: datetime) -> UsageEvent:
+    """Собирает reserved-строку без пользовательского текста."""
+    event = _committed_event("req-reserved", cost_nanos, created_at)
+    return replace(event, status="reserved")
 
 
 def _committed_event(

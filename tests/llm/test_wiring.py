@@ -8,14 +8,17 @@ from skillhub import web
 from skillhub.app_factory import create_app
 from skillhub.llm import DeepSeekLlmGateway, FakeLlmGateway, LlmResult, LlmUsage
 from skillhub.web import create_router
+from skillhub.web.usage_routes import LoggingLlmGateway
 
 
 def test_create_app_does_not_select_fake_gateway() -> None:
     """Проверяет, что production не выбирает тестовый шов сам."""
     app = create_app()
 
-    assert isinstance(app.state.llm_gateway, DeepSeekLlmGateway)
+    assert isinstance(app.state.llm_gateway, LoggingLlmGateway)
+    assert isinstance(app.state.llm_transport, DeepSeekLlmGateway)
     assert not isinstance(app.state.llm_gateway, FakeLlmGateway)
+    assert not isinstance(app.state.llm_gateway, DeepSeekLlmGateway)
 
 
 def test_create_app_accepts_explicit_fake_gateway() -> None:
@@ -30,7 +33,9 @@ def test_create_app_accepts_explicit_fake_gateway() -> None:
 
     app = create_app(llm_gateway=fake)
 
-    assert app.state.llm_gateway is fake
+    assert app.state.llm_gateway is not fake
+    assert isinstance(app.state.llm_gateway, LoggingLlmGateway)
+    assert app.state.llm_transport is fake
 
 
 def test_create_app_includes_assistant_router_when_published(

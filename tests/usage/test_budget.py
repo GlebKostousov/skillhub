@@ -24,6 +24,7 @@ from skillhub.llm import (
 )
 from skillhub.usage import (
     DailyBudgetExceededError,
+    LedgerError,
     UsageEvent,
     bind_call,
     load_tariffs,
@@ -60,7 +61,7 @@ def test_complete_rejects_over_budget_before_inner(tmp_path: Path) -> None:
 
 
 def test_success_commits_actual_tokens_not_reserve(tmp_path: Path) -> None:
-    """Проверяет, что после успеха в журнале фактические токены и цена."""
+    """Проверяет фактические токены при стоимости не выше дневного лимита."""
     inner = FakeLlmGateway(result=_result("ответ", 1_000_000, 0))
     gateway = _metered(tmp_path, inner, daily_budget_nanos=_RESERVE_NANOS)
 
@@ -70,8 +71,59 @@ def test_success_commits_actual_tokens_not_reserve(tmp_path: Path) -> None:
     assert event.status == "committed"
     assert event.prompt_tokens == 1_000_000
     assert event.completion_tokens == 0
-    assert event.cost_nanos == 300_000_000
+    assert event.cost_nanos <= _RESERVE_NANOS
     assert inner.requests != []
+
+
+def test_huge_actual_usage_keeps_held_within_budget(tmp_path: Path) -> None:
+    """Проверяет, что огромный usage поставщика не поднимает held выше лимита."""
+    path = tmp_path / "usage.sqlite3"
+    inner = FakeLlmGateway(result=_result("ответ", 1_000_000, 0))
+    gateway = _metered(tmp_path, inner, daily_budget_nanos=_RESERVE_NANOS)
+
+    gateway.complete(_request("x"))
+
+    ledger = open_ledger(path)
+    committed, reserved = ledger.day_totals(datetime.now(UTC).date())
+    event = ledger.list()[0]
+    assert reserved == 0
+    assert committed <= _RESERVE_NANOS
+    assert event.prompt_tokens == 1_000_000
+    assert event.completion_tokens == 0
+
+
+def test_negative_provider_tokens_are_rejected(tmp_path: Path) -> None:
+    """Проверяет отказ отрицательных токенов поставщика без снижения SUM."""
+    path = tmp_path / "usage.sqlite3"
+    inner = FakeLlmGateway(result=_result("ответ", -1, 0))
+    gateway = _metered(tmp_path, inner, daily_budget_nanos=_RESERVE_NANOS)
+
+    with pytest.raises(LedgerError):
+        gateway.complete(_request("x"))
+
+    committed, reserved = open_ledger(path).day_totals(datetime.now(UTC).date())
+    assert committed == 0
+    assert reserved == 0
+
+
+def test_runtime_error_releases_reserve(tmp_path: Path) -> None:
+    """Проверяет, что RuntimeError после reserve не оставляет held."""
+    path = tmp_path / "usage.sqlite3"
+    catalog = load_tariffs(_write_tariff(tmp_path))
+    ledger = open_ledger(path)
+    failing = MeteredLlmGateway(
+        _BrokenGateway(),
+        ledger,
+        catalog,
+        daily_budget_nanos=_RESERVE_NANOS,
+    )
+
+    with pytest.raises(RuntimeError):
+        failing.complete(_request("x"))
+
+    committed, reserved = ledger.day_totals(datetime.now(UTC).date())
+    assert committed == 0
+    assert reserved == 0
 
 
 def test_provider_error_releases_reserve_for_next_call(tmp_path: Path) -> None:
@@ -235,6 +287,15 @@ def test_all_message_code_points_count_in_reserve(tmp_path: Path) -> None:
         gateway.complete(request)
 
     assert inner.requests == []
+
+
+class _BrokenGateway(LlmGateway):
+    """Поднимает RuntimeError после входа в complete()."""
+
+    def complete(self, request: LlmRequest) -> LlmResult:
+        """Имитирует сбой внутреннего шлюза после резерва."""
+        del request
+        raise RuntimeError
 
 
 class _HoldGateway(LlmGateway):

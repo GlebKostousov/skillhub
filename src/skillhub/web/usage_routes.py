@@ -181,7 +181,7 @@ def build_usage_report(
     request_id: str | None,
     daily_budget_nanos: int | None,
 ) -> UsageReport:
-    """Собирает общий снимок расходов из committed-строк журнала.
+    """Собирает общий снимок расходов узкими запросами к журналу.
 
     Args:
         ledger: журнал committed-строк.
@@ -191,28 +191,28 @@ def build_usage_report(
     Returns:
         Снимок для HTML и JSON.
     """
-    events = ledger.list()
-    today = datetime.now(UTC).date().isoformat()
+    today = datetime.now(UTC).date()
+    committed_nanos, reserved_nanos = ledger.day_totals(today)
     return {
-        "current": _current(events, request_id),
+        "current": _current(ledger, request_id),
         "today": {
-            "date": today,
-            "committed_nanos": _sum_today(events, today),
-            "reserved_nanos": 0,
+            "date": today.isoformat(),
+            "committed_nanos": committed_nanos,
+            "reserved_nanos": reserved_nanos,
             "limit_nanos": daily_budget_nanos,
             "currency": "USD",
         },
-        "entries": [_entry(event) for event in reversed(events)],
+        "entries": [_entry(event) for event in ledger.recent()],
     }
 
 
 def _current(
-    events: tuple[UsageEvent, ...],
+    ledger: UsageLedger,
     request_id: str | None,
 ) -> CurrentUsage | None:
     if request_id is None or request_id == "":
         return None
-    matches = [event for event in events if event.request_id == request_id]
+    matches = ledger.lookup(request_id)
     if not matches:
         return None
     return {
@@ -220,18 +220,6 @@ def _current(
         "cost_nanos": _sum_cost(matches),
         "currency": matches[0].currency,
     }
-
-
-def _sum_today(events: tuple[UsageEvent, ...], today: str) -> int:
-    return sum(
-        event.cost_nanos for event in events if _utc_day(event.created_at) == today
-    )
-
-
-def _utc_day(at: datetime) -> str:
-    if at.tzinfo is None:
-        return at.date().isoformat()
-    return at.astimezone(UTC).date().isoformat()
 
 
 def _entry(event: UsageEvent) -> UsageEntry:
@@ -261,11 +249,10 @@ def _log_complete(ledger: UsageLedger, status: str, started: float) -> None:
 def _committed_cost(ledger: UsageLedger, request_id: str, status: str) -> int:
     if status != "ok":
         return 0
-    matches = [event for event in ledger.list() if event.request_id == request_id]
-    return _sum_cost(matches)
+    return _sum_cost(ledger.lookup(request_id))
 
 
-def _sum_cost(events: list[UsageEvent]) -> int:
+def _sum_cost(events: tuple[UsageEvent, ...]) -> int:
     return sum(event.cost_nanos for event in events)
 
 

@@ -53,7 +53,8 @@ def create_app(
     csrf_token = secrets.token_urlsafe(32)
     inner, gateway, ledger = _build_usage_gateway(llm_gateway, settings)
     app = FastAPI(title="SkillHub", debug=False)
-    app.state.llm_gateway = inner
+    app.state.llm_gateway = gateway
+    app.state.llm_transport = inner
     app.state.usage_ledger = ledger
     app.add_middleware(
         TrustedHostEnvelopeMiddleware,

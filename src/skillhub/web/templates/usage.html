@@ -27,14 +27,14 @@
     <div class="card-body p-4">
       <h2 id="today-heading" class="h4">Сегодня</h2>
       <p class="mb-1">Дата UTC: {{ today.date }}</p>
-      <p class="mb-1">Зафиксировано: {{ today.committed_nanos }}</p>
-      <p class="mb-1">Резерв: {{ today.reserved_nanos }}</p>
+      <p class="mb-1">Зафиксировано: {{ today.committed_nanos }} нано-USD</p>
+      <p class="mb-1">Резерв: {{ today.reserved_nanos }} нано-USD</p>
       <p class="mb-0">
         Лимит:
         {% if today.limit_nanos is none %}
           n/a
         {% else %}
-          {{ today.limit_nanos }}
+          {{ today.limit_nanos }} нано-USD
         {% endif %}
       </p>
     </div>

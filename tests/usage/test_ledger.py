@@ -1,17 +1,20 @@
 """Проверяет журнал расходов на рестарт и снимок тарифа."""
 
 import sqlite3
-from datetime import UTC, date, datetime
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
 from skillhub.usage import (
+    LedgerError,
     SchemaVersionError,
     UsageEvent,
     open_ledger,
 )
+from skillhub.usage._ledger import STALE_RESERVED_SECONDS
 
 _REQUEST_ID = "req-ledger-1"
 _MODEL = "deepseek-flash"
@@ -46,6 +49,47 @@ def test_recorded_cost_stays_after_new_event(tmp_path: Path) -> None:
     assert stored[0].cost_nanos == 300_000_000
     assert stored[1].cost_nanos == 150_000_000
     assert stored[0].tariff_cache_miss == Decimal("0.30")
+
+
+def test_stale_reserved_is_released_on_reopen(tmp_path: Path) -> None:
+    """Проверяет снятие просроченного reserved при повторном открытии."""
+    path = tmp_path / "usage.sqlite3"
+    stale = replace(
+        _committed_event(cost_nanos=250),
+        status="reserved",
+        created_at=datetime.now(UTC) - timedelta(seconds=STALE_RESERVED_SECONDS + 1),
+    )
+    open_ledger(path).record(stale)
+
+    restored = open_ledger(path)
+    committed, reserved = restored.day_totals(stale.created_at.astimezone(UTC).date())
+
+    assert reserved == 0
+    assert committed == 0
+    assert restored.list() == ()
+
+
+def test_v1_without_events_table_is_rejected(tmp_path: Path) -> None:
+    """Проверяет отказ чужого SQLite v1 без usage_events и сохранность таблиц."""
+    path = tmp_path / "usage.sqlite3"
+    _write_v1_without_events(path)
+
+    with pytest.raises(SchemaVersionError) as captured:
+        open_ledger(path)
+
+    assert captured.value.code == "unsupported_schema"
+    assert _fetch_keep_me(path) == (1,)
+    assert "usage_events" not in _table_names(path)
+    assert "keep_me" in _table_names(path)
+
+
+def test_non_sqlite_file_is_rejected(tmp_path: Path) -> None:
+    """Проверяет отказ файла, который не является базой SQLite."""
+    path = tmp_path / "usage.sqlite3"
+    path.write_bytes(b"not a sqlite database")
+
+    with pytest.raises((SchemaVersionError, LedgerError)):
+        open_ledger(path)
 
 
 def test_foreign_schema_version_is_rejected_without_rewrite(tmp_path: Path) -> None:
@@ -99,6 +143,31 @@ def _committed_event(
         status="committed",
         created_at=datetime(2026, 9, 12, 11, 0, tzinfo=UTC),
     )
+
+
+def _write_v1_without_events(path: Path) -> None:
+    """Пишет schema_version=1 и контрольную таблицу без usage_events."""
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("CREATE TABLE schema_version (version INTEGER NOT NULL)")
+        connection.execute("INSERT INTO schema_version (version) VALUES (1)")
+        connection.execute("CREATE TABLE keep_me (id INTEGER)")
+        connection.execute("INSERT INTO keep_me (id) VALUES (1)")
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _table_names(path: Path) -> set[str]:
+    """Возвращает имена пользовательских таблиц файла."""
+    connection = sqlite3.connect(path)
+    try:
+        rows = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+    finally:
+        connection.close()
+    return {str(row[0]) for row in rows}
 
 
 def _write_foreign_schema(path: Path) -> None:

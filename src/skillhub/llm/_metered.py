@@ -6,9 +6,9 @@ from datetime import UTC, datetime
 from structlog.contextvars import get_contextvars
 
 from skillhub.llm._constants import DEEPSEEK_MODEL
-from skillhub.llm._errors import GenerationUnavailableError, ProviderError
-from skillhub.llm._models import LlmGateway, LlmRequest, LlmResult
+from skillhub.llm._models import LlmGateway, LlmRequest, LlmResult, LlmUsage
 from skillhub.usage import (
+    LedgerError,
     TariffCatalog,
     TokenCounts,
     UnknownModelError,
@@ -67,10 +67,17 @@ class MeteredLlmGateway(LlmGateway):
     def _finish(self, request: LlmRequest, reservation: int | None) -> LlmResult:
         try:
             result = self._inner.complete(request)
-        except (ProviderError, GenerationUnavailableError):
+        except Exception:
             self._release(reservation)
             raise
-        self._commit(reservation, result)
+        return self._store(reservation, result)
+
+    def _store(self, reservation: int | None, result: LlmResult) -> LlmResult:
+        try:
+            self._commit(reservation, result)
+        except Exception:
+            self._release(reservation)
+            raise
         return result
 
     def _release(self, reservation: int | None) -> None:
@@ -83,7 +90,7 @@ class MeteredLlmGateway(LlmGateway):
         if reservation is None:
             self._ledger.record(event)
             return
-        self._ledger.commit(reservation, event)
+        self._ledger.commit(reservation, event, self._daily_budget_nanos)
 
 
 def _resolve(source: TariffSource) -> TariffCatalog:
@@ -125,6 +132,7 @@ def _committed_event(result: LlmResult, catalog: TariffCatalog) -> UsageEvent:
     now = datetime.now(UTC)
     snapshot = catalog.snapshot(_catalog_model(catalog), now)
     usage = result.usage
+    _reject_negative_usage(usage)
     operation, skill = bound_call()
     tokens = TokenCounts(
         cache_hit=0,
@@ -176,3 +184,9 @@ def _request_id() -> str:
     if type(value) is str:
         return value
     return ""
+
+
+def _reject_negative_usage(usage: LlmUsage) -> None:
+    tokens = (usage.prompt_tokens, usage.completion_tokens, usage.total_tokens)
+    if any(item < 0 for item in tokens):
+        raise LedgerError
