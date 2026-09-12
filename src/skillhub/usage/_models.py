@@ -100,6 +100,53 @@ class TariffSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class UsageEvent:
+    """Зафиксированная строка журнала одного вызова модели.
+
+    Attributes:
+        request_id: идентификатор запроса из контекста логов.
+        operation: операция вызова или unspecified.
+        skill: выбранный режим или его отсутствие.
+        model: идентификатор модели.
+        prompt_tokens: число входных токенов.
+        completion_tokens: число выходных токенов.
+        total_tokens: суммарное число токенов.
+        cache_hit: число входных токенов с попаданием в кэш.
+        cache_miss: число входных токенов без попадания в кэш.
+        reasoning: число токенов рассуждения или его отсутствие.
+        cost_nanos: стоимость в целых нано-USD на момент записи.
+        currency: валюта снимка тарифа.
+        tariff_cache_hit: цена попадания в кэш из снимка.
+        tariff_cache_miss: цена промаха кэша из снимка.
+        tariff_output: цена выходных токенов из снимка.
+        tariff_source: публичный источник цен.
+        tariff_verified_at: дата проверки источника.
+        status: состояние строки журнала.
+        created_at: момент записи в UTC.
+    """
+
+    request_id: str
+    operation: str
+    skill: str | None
+    model: str
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
+    cache_hit: int
+    cache_miss: int
+    reasoning: int | None
+    cost_nanos: int
+    currency: str
+    tariff_cache_hit: Decimal
+    tariff_cache_miss: Decimal
+    tariff_output: Decimal
+    tariff_source: str
+    tariff_verified_at: date
+    status: str
+    created_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
 class TokenCounts:
     """Фактические счётчики токенов одного вызова.
 

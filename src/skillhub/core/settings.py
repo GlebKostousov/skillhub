@@ -1,5 +1,6 @@
 """Определяет минимальную конфигурацию с отказом при ошибке."""
 
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic_settings import (
@@ -43,6 +44,8 @@ class Settings(BaseSettings):
 
     Attributes:
         environment: режим представления технических логов.
+        usage_path: путь к файлу журнала расходов.
+        daily_budget_nanos: дневной потолок в нано-USD или его отсутствие.
     """
 
     model_config = SettingsConfigDict(
@@ -54,6 +57,8 @@ class Settings(BaseSettings):
     )
 
     environment: Environment = "development"
+    usage_path: Path = Path("usage.sqlite3")
+    daily_budget_nanos: int | None = None
 
     @classmethod
     def settings_customise_sources(

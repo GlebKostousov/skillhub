@@ -7,10 +7,11 @@ import structlog
 from skillhub.assistant._handler import SkillHandler
 from skillhub.assistant._models import AssistantOutcome
 from skillhub.assistant._registry import SkillHandlerRegistry
-from skillhub.classifier import SkillClassifier, SkillMetadata
+from skillhub.classifier import Classification, SkillClassifier, SkillMetadata
 from skillhub.llm import GenerationUnavailableError, ProviderError
 from skillhub.protocol import ProtocolGenerationError, ProtocolParseError
 from skillhub.registry import Skill
+from skillhub.usage import bind_call
 
 _MESSAGE_SUCCESS = "Ответ готов."
 _MESSAGE_NONE = "Подходящий режим не выбран."
@@ -50,39 +51,82 @@ class Assistant:
         Returns:
             Типизированный исход без маскировки отказов шлюза.
         """
-        try:
-            classification = self._classifier.select(intent, _metadata_from(snapshot))
-        except GenerationUnavailableError:
-            return _gateway_unavailable(None, None)
-        except ProviderError:
-            return _gateway_provider(None, None)
-
-        selected = classification.skill
-        if selected is None:
-            return _logged(
-                AssistantOutcome(
-                    selected_skill=None,
-                    caption=None,
-                    outcome="none",
-                    text=None,
-                    message=_MESSAGE_NONE,
-                )
+        with bind_call(operation="classify"):
+            return _select_and_run(
+                self._classifier,
+                self._handlers,
+                intent,
+                material,
+                snapshot,
             )
 
-        skill = snapshot.get(selected)
-        caption = skill.caption if skill is not None else None
-        handler = self._handlers.resolve(selected)
-        if handler is None or skill is None:
-            return _logged(
-                AssistantOutcome(
-                    selected_skill=selected,
-                    caption=caption,
-                    outcome="handler_unavailable",
-                    text=None,
-                    message=_MESSAGE_HANDLER_UNAVAILABLE,
-                )
+
+def _select_and_run(
+    classifier: SkillClassifier,
+    handlers: SkillHandlerRegistry,
+    intent: str,
+    material: str,
+    snapshot: Mapping[str, Skill],
+) -> AssistantOutcome:
+    try:
+        classification = classifier.select(intent, _metadata_from(snapshot))
+    except GenerationUnavailableError:
+        return _gateway_unavailable(None, None)
+    except ProviderError:
+        return _gateway_provider(None, None)
+    return _after_classification(handlers, classification, snapshot, material)
+
+
+def _after_classification(
+    handlers: SkillHandlerRegistry,
+    classification: Classification,
+    snapshot: Mapping[str, Skill],
+    material: str,
+) -> AssistantOutcome:
+    selected = classification.skill
+    if selected is None:
+        return _logged(
+            AssistantOutcome(
+                selected_skill=None,
+                caption=None,
+                outcome="none",
+                text=None,
+                message=_MESSAGE_NONE,
             )
+        )
+    return _run_selected(handlers, selected, snapshot, material)
+
+
+def _run_selected(
+    handlers: SkillHandlerRegistry,
+    selected: str,
+    snapshot: Mapping[str, Skill],
+    material: str,
+) -> AssistantOutcome:
+    skill = snapshot.get(selected)
+    handler = handlers.resolve(selected)
+    if handler is None or skill is None:
+        return _unavailable(selected, _caption_of(skill))
+    with bind_call(operation="generate", skill=selected):
         return _run_handler(handler, skill, material)
+
+
+def _unavailable(selected: str, caption: str | None) -> AssistantOutcome:
+    return _logged(
+        AssistantOutcome(
+            selected_skill=selected,
+            caption=caption,
+            outcome="handler_unavailable",
+            text=None,
+            message=_MESSAGE_HANDLER_UNAVAILABLE,
+        )
+    )
+
+
+def _caption_of(skill: Skill | None) -> str | None:
+    if skill is None:
+        return None
+    return skill.caption
 
 
 def _metadata_from(snapshot: Mapping[str, Skill]) -> tuple[SkillMetadata, ...]:

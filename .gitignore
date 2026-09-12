@@ -49,3 +49,4 @@ Desktop.ini
 *.tmp
 *.temp
 *~
+*.sqlite3

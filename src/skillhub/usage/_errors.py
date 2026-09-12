@@ -37,3 +37,18 @@ class InvalidCurrencyError(TariffError):
 
     code = "invalid_currency"
     public_message = "Валюта тарифа должна быть USD."
+
+
+class LedgerError(SkillHubError):
+    """Описывает отказ открыть или записать журнал расходов."""
+
+    code = "invalid_ledger"
+    status_code = 500
+    public_message = "Журнал расходов недоступен."
+
+
+class SchemaVersionError(LedgerError):
+    """Описывает несовместимую версию схемы журнала."""
+
+    code = "unsupported_schema"
+    public_message = "Версия журнала расходов не поддерживается."
