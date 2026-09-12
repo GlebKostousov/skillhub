@@ -12,6 +12,8 @@ _SIMPLE_SKILL_NAMES = frozenset(
         "text-translation",
     }
 )
+
+
 class SkillHandlerRegistry:
     """Сопоставляет имя скилла разрешённому обработчику."""
 

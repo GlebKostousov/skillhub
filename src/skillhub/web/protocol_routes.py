@@ -34,9 +34,7 @@ from skillhub.web.errors import RequestTooLargeError, UnsupportedFormError
 MAX_PROTOCOL_BODY_BYTES = 1_048_576
 _JSON_TYPE = "application/json"
 _DRAFT_INSTRUCTION = "Собери нормативный протокол встречи."
-_DOCX_TYPE = (
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-)
+_DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 _DOCX_DISPOSITION = 'attachment; filename="protocol.docx"'
 
 
@@ -282,9 +280,12 @@ def _reject_invalid_length(raw_length: str) -> None:
 
 def _parse_declared_length(raw_length: str) -> int:
     try:
-        return int(raw_length)
-    except ValueError as exc:
-        raise RequestTooLargeError from exc
+        parsed: int | None = int(raw_length)
+    except ValueError:
+        parsed = None
+    if parsed is None:
+        raise RequestTooLargeError
+    return parsed
 
 
 async def _collect_body(request: Request) -> bytes:
