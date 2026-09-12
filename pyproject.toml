@@ -53,6 +53,7 @@ convention = "google"
 
 [tool.mypy]
 python_version = "3.13"
+platform = "win32"
 strict = true
 mypy_path = "src"
 files = ["src", "tests"]

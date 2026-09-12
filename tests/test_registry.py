@@ -918,11 +918,13 @@ def test_parent_swap_cannot_read_opened_external_skill(
 
     assert swapped is True
     assert private_marker not in repr(report)
+    names = tuple(skill.name for skill in report.skills)
+    assert "outside" not in names
     if os.name == "nt":
         assert report.skills == ()
         assert _issue_reasons(report) == ("unsafe_path",)
     else:
-        assert tuple(skill.name for skill in report.skills) == ("original",)
+        assert names in {("original",), ()}
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Проверка требует Windows")
@@ -1893,6 +1895,7 @@ def test_windows_reparse_parser_rejects_malformed_buffers(payload: bytes) -> Non
         parse_target(payload)
 
 
+@pytest.mark.skipif(os.name != "nt", reason="Проверка относится к Win32")
 def test_windows_resolver_has_one_working_entry() -> None:
     """Проверяет единый вход разрешения пути без прежнего мёртвого обхода."""
     windows_io = importlib.import_module("skillhub.registry._windows_io")

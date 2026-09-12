@@ -152,9 +152,12 @@ def _reject_oversized_declared_body(request: Request) -> None:
 
 def _parse_declared_length(raw_length: str) -> int:
     try:
-        return int(raw_length)
-    except ValueError as exc:
-        raise RequestTooLargeError from exc
+        parsed: int | None = int(raw_length)
+    except ValueError:
+        parsed = None
+    if parsed is None:
+        raise RequestTooLargeError
+    return parsed
 
 
 def _parse_form_token(body: bytes) -> str | None:

@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Получить исходники
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Применить локальные настройки Git
+        run: |
+          git config --local core.autocrlf false
+          git config --local core.safecrlf true
+          git config --local fetch.prune true
+          git config --local pull.ff only
+          git config --local push.autoSetupRemote true
+
+      - name: Установить uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Синхронизировать окружение
+        run: uv sync --frozen
+
+      - name: Проверить стиль
+        run: uv run --no-sync ruff check .
+
+      - name: Проверить форматирование
+        run: uv run --no-sync ruff format --check .
+
+      - name: Проверить типы
+        run: uv run --no-sync mypy src tests
+
+      - name: Проверить импорты
+        run: uv run --no-sync lint-imports
+
+      - name: Прогнать тесты
+        run: uv run --no-sync pytest --cov-fail-under=85
+
+      - name: Проверить зависимости
+        run: uv run --no-sync --with pip-audit pip-audit
+
+      - name: Искать секреты
+        uses: trufflesecurity/trufflehog@v3.97.4
+        with:
+          extra_args: --only-verified

@@ -83,9 +83,7 @@ def test_pipe_in_rendered_task_cells_roundtrips_as_slash() -> None:
     )
     parsed = parse(render(protocol))
 
-    assert parsed.tasks == (
-        ProtocolTask(title="A/B", assignee="C/D", due="E/F"),
-    )
+    assert parsed.tasks == (ProtocolTask(title="A/B", assignee="C/D", due="E/F"),)
 
 
 _SAFE_CHARS = st.characters(

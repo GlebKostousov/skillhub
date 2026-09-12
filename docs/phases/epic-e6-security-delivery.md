@@ -1,6 +1,6 @@
 # E6. Защита и поставка
 
-Статус: не начат
+Статус: принят. As-built: `tests/security/`, `eval/run_eval.py --offline`, CI, Docker editable+src, `eval/run_demo.py --offline`.
 Вес: 8 единиц
 Зависит от: E1–E5
 
@@ -64,6 +64,11 @@
 - classifier и security eval summary;
 - актуальные architecture, threat model, ADR и decision rationale;
 - ограничения и roadmap.
+
+As-built: `eval/run_demo.py --offline` повторяет сценарий на FakeLlmGateway
+без записи постоянных фикстур. Архитектура §7d/§10 и threat model указывают
+`tests/security/`, `eval/`, CI и Docker editable+src. Абсолютная защита от
+prompt injection не обещается. Новые пользовательские маршруты не добавляются.
 
 Приёмка: демонстрация повторяется без ручной починки данных; каждый заявленный тезис имеет тест, метрику или документированное ограничение.
 

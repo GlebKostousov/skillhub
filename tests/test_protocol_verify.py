@@ -65,8 +65,7 @@ def test_discussion_does_not_confirm_decision() -> None:
         UnconfirmedClaim(
             target="decision:0",
             reason=(
-                "Обсуждение не подтверждает решение, задачу, срок "
-                "или ответственного."
+                "Обсуждение не подтверждает решение, задачу, срок или ответственного."
             ),
         ),
     )
@@ -213,8 +212,7 @@ def test_discussed_task_and_wish_stay_unconfirmed() -> None:
         ),
     )
     material = (
-        "Обсуждали подготовить данные поддержки. "
-        "Хотели бы Анна и срок 2026-09-15."
+        "Обсуждали подготовить данные поддержки. Хотели бы Анна и срок 2026-09-15."
     )
 
     flagged = verify(protocol, material)
@@ -290,4 +288,3 @@ def test_verify_module_does_not_mention_llm() -> None:
 
     assert "skillhub.llm" not in source
     assert "LlmGateway" not in source
-
