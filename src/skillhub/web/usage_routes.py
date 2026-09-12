@@ -215,11 +215,10 @@ def _current(
     matches = [event for event in events if event.request_id == request_id]
     if not matches:
         return None
-    event = matches[-1]
     return {
-        "request_id": event.request_id,
-        "cost_nanos": event.cost_nanos,
-        "currency": event.currency,
+        "request_id": request_id,
+        "cost_nanos": _sum_cost(matches),
+        "currency": matches[0].currency,
     }
 
 
@@ -263,9 +262,11 @@ def _committed_cost(ledger: UsageLedger, request_id: str, status: str) -> int:
     if status != "ok":
         return 0
     matches = [event for event in ledger.list() if event.request_id == request_id]
-    if not matches:
-        return 0
-    return matches[-1].cost_nanos
+    return _sum_cost(matches)
+
+
+def _sum_cost(events: list[UsageEvent]) -> int:
+    return sum(event.cost_nanos for event in events)
 
 
 def _bound_request_id() -> str:

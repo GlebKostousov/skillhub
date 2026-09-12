@@ -15,6 +15,7 @@ from skillhub.app_factory import create_app
 from skillhub.core import configure_logging
 from skillhub.llm import FakeLlmGateway, LlmResult, LlmUsage
 from skillhub.usage import UsageEvent, UsageLedger
+from skillhub.web.usage_routes import _committed_cost
 
 _PUBLIC_BUDGET_MESSAGE = "Дневной лимит модельных расходов исчерпан"
 _EMPTY_COPY = "Записей расходов пока нет"
@@ -165,6 +166,45 @@ def test_usage_complete_log_keeps_cost_and_hides_content(
         assert "output" not in event
 
 
+def test_current_cost_sums_committed_rows_of_one_request(usage_path: Path) -> None:
+    """Проверяет, что цена запроса складывает все committed-строки одного id."""
+    now = datetime.now(UTC)
+    ledger = UsageLedger(usage_path)
+    ledger.record(_committed_event("req-sum", 111, now))
+    ledger.record(_committed_event("req-sum", 222, now))
+    client = TestClient(create_app())
+
+    payload = client.get("/api/usage", params={"request_id": "req-sum"}).json()
+    page = client.get("/usage", params={"request_id": "req-sum"})
+    current_block = _section_between(page.text, "Текущий запрос", "Сегодня")
+
+    assert payload["current"] is not None
+    assert payload["current"]["cost_nanos"] == 333
+    assert payload["current"]["currency"] == "USD"
+    assert "333" in current_block
+    assert "111" not in current_block
+    assert "222" not in current_block
+    assert _committed_cost(ledger, "req-sum", "ok") == 333
+
+
+def test_current_cost_unit_is_nano_usd_not_bare_dollars(usage_path: Path) -> None:
+    """Проверяет подпись нано-USD у цены запроса без голого USD."""
+    UsageLedger(usage_path).record(
+        _committed_event("req-unit", 450, datetime.now(UTC)),
+    )
+    page = TestClient(create_app()).get("/usage", params={"request_id": "req-unit"})
+    current_block = _section_between(page.text, "Текущий запрос", "Сегодня")
+    table_head = _section_between(page.text, "<thead>", "</thead>")
+
+    assert "450" in current_block
+    assert "нано-USD" in current_block
+    assert "450 USD" not in current_block
+    assert " USD" not in current_block
+    assert "нано-USD" in table_head
+    assert ">USD<" not in table_head
+    assert ">currency<" not in table_head
+
+
 def test_null_limit_renders_as_na(usage_path: Path) -> None:
     """Проверяет отображение n/a, когда дневной потолок не задан."""
     del usage_path
@@ -251,6 +291,12 @@ def _post_assistant(client: TestClient, token: str) -> Response:
             "x-csrf-token": token,
         },
     )
+
+
+def _section_between(html: str, start: str, end: str) -> str:
+    """Возвращает фрагмент разметки между двумя маркерами."""
+    after_start = html.split(start, 1)[1]
+    return after_start.split(end, 1)[0]
 
 
 def _json_events(output: str) -> list[dict[str, object]]:

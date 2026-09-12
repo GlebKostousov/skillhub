@@ -16,7 +16,7 @@
       <h2 id="current-heading" class="h4">Текущий запрос</h2>
       {% if current %}
         <p class="mb-1">Идентификатор: {{ current.request_id }}</p>
-        <p class="mb-0">Стоимость: {{ current.cost_nanos }} {{ current.currency }}</p>
+        <p class="mb-0">Стоимость: {{ current.cost_nanos }} нано-USD</p>
       {% else %}
         <p class="mb-0">n/a</p>
       {% endif %}
@@ -56,8 +56,7 @@
                 <th scope="col">operation</th>
                 <th scope="col">skill</th>
                 <th scope="col">model</th>
-                <th scope="col">cost_nanos</th>
-                <th scope="col">currency</th>
+                <th scope="col">нано-USD</th>
                 <th scope="col">status</th>
                 <th scope="col">created_at</th>
               </tr>
@@ -70,7 +69,6 @@
                   <td>{% if item.skill %}{{ item.skill }}{% else %}n/a{% endif %}</td>
                   <td>{{ item.model }}</td>
                   <td>{{ item.cost_nanos }}</td>
-                  <td>{{ item.currency }}</td>
                   <td>{{ item.status }}</td>
                   <td>{{ item.created_at }}</td>
                 </tr>
