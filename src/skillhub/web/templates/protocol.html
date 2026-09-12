@@ -7,7 +7,7 @@
     <p class="text-body-secondary mb-2">Черновик и выгрузка</p>
     <h1 class="display-6 mb-3">Протокол встречи</h1>
     <p class="lead mb-0">
-      Соберите черновик из транскрипции или выгрузите готовый протокол в Word.
+      Соберите черновик, закройте уточнения и сформируйте итоговый протокол или выгрузите Word.
     </p>
   </header>
 
@@ -53,6 +53,41 @@
       <button class="btn btn-outline-primary" type="button" id="protocol-download-button">
         Выгрузить Word
       </button>
+    </div>
+  </section>
+
+  <section class="card border-0 shadow-sm mb-4" aria-labelledby="protocol-clarifications-title">
+    <div class="card-body p-4">
+      <h2 id="protocol-clarifications-title" class="h4">Уточнения</h2>
+      <p class="text-body-secondary">
+        Закройте важные пропуски в тексте протокола или пропустите строку.
+      </p>
+      <button class="btn btn-outline-primary mb-3" type="button" id="protocol-clarifications-button">
+        Показать уточнения
+      </button>
+      <button class="btn btn-primary mb-3" type="button" id="protocol-finalize-button">
+        Сформировать итоговый протокол
+      </button>
+      <div id="protocol-unconfirmed" class="alert alert-warning d-none" role="status">
+        <p class="mb-2">Материал не подтвердил часть утверждений.</p>
+        <ul id="protocol-unconfirmed-list" class="mb-0"></ul>
+      </div>
+      <p id="protocol-clarifications-empty" class="d-none" role="status">
+        Важных пропусков нет.
+      </p>
+      <div id="protocol-clarifications-wrap" class="table-responsive d-none">
+        <table class="table align-middle" id="protocol-clarifications-table">
+          <thead>
+            <tr>
+              <th scope="col">Проблема</th>
+              <th scope="col">Ответ</th>
+              <th scope="col">Действия</th>
+              <th scope="col">Статус</th>
+            </tr>
+          </thead>
+          <tbody id="protocol-clarifications-body"></tbody>
+        </table>
+      </div>
     </div>
   </section>
 

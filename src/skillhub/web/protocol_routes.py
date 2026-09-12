@@ -1,7 +1,8 @@
-"""Собирает страницу черновика и выгрузку протокола в Word."""
+"""Собирает страницу черновика, уточнения и выгрузку протокола в Word."""
 
 import json
 import secrets
+from collections.abc import Mapping, Sequence
 from typing import cast
 
 import structlog
@@ -13,12 +14,19 @@ from starlette.responses import Response
 from skillhub.core import SkillHubError
 from skillhub.docx_export import build_docx
 from skillhub.protocol import (
+    Clarification,
+    FinalizedProtocol,
     Protocol,
     ProtocolParseError,
     ProtocolTextGenerator,
+    apply_answers,
+    build_clarifications,
     create_draft,
     parse,
     render,
+)
+from skillhub.protocol import (
+    finalize as finalize_protocol,
 )
 from skillhub.web._reload_guard import validate_csrf_token
 from skillhub.web.errors import RequestTooLargeError, UnsupportedFormError
@@ -110,6 +118,42 @@ class _ProtocolRoutes:
             return _parse_error_response(exc)
         return _docx_response(build_docx(protocol))
 
+    async def clarifications(self, request: Request) -> Response:
+        """Возвращает список уточнений по тексту протокола."""
+        payload = await self._read_json(request)
+        text = _string_field(payload, "text")
+        try:
+            protocol = parse(text)
+        except ProtocolParseError as exc:
+            return _parse_error_response(exc)
+        return JSONResponse(content=_clarifications_payload(protocol))
+
+    async def answer(self, request: Request) -> Response:
+        """Применяет одно решение уточнения к тексту протокола."""
+        payload = await self._read_json(request)
+        text = _string_field(payload, "text")
+        try:
+            rebuilt = rebuild_protocol_text(text, (_decision(payload),))
+            updated = parse(rebuilt)
+        except ProtocolParseError as exc:
+            return _parse_error_response(exc)
+        content = _clarifications_payload(updated)
+        content["text"] = rebuilt
+        return JSONResponse(content=content)
+
+    async def finalize(self, request: Request) -> Response:
+        """Собирает итоговый протокол из закрытых уточнений и материала."""
+        payload = await self._read_json(request)
+        text = _string_field(payload, "text")
+        material = _string_field(payload, "material")
+        answers = _answers_field(payload)
+        try:
+            protocol = parse(text)
+            result = finalize_protocol(protocol, answers, material)
+        except ProtocolParseError as exc:
+            return _parse_error_response(exc)
+        return JSONResponse(content=_finalize_payload(result))
+
     def _require_generator(self) -> ProtocolTextGenerator:
         if self._generator is None:
             raise GenerationUnavailableError
@@ -138,7 +182,7 @@ def create_protocol_router(
         generator: порт генерации или ``None``, если генерация недоступна.
 
     Returns:
-        Маршрутизатор с страницей черновика и двумя изменяющими швами.
+        Маршрутизатор с страницей черновика и изменяющими швами.
 
     Raises:
         ValueError: настроенный секрет CSRF не соответствует контракту.
@@ -162,6 +206,24 @@ def create_protocol_router(
     router.add_api_route(
         "/protocol/docx",
         routes.export_docx,
+        methods=["POST"],
+        response_model=None,
+    )
+    router.add_api_route(
+        "/protocol/clarifications",
+        routes.clarifications,
+        methods=["POST"],
+        response_model=None,
+    )
+    router.add_api_route(
+        "/protocol/answer",
+        routes.answer,
+        methods=["POST"],
+        response_model=None,
+    )
+    router.add_api_route(
+        "/protocol/finalize",
+        routes.finalize,
         methods=["POST"],
         response_model=None,
     )
@@ -297,6 +359,76 @@ def _draft_payload(protocol: Protocol) -> dict[str, object]:
     payload = cast("dict[str, object]", protocol.model_dump())
     payload["text"] = render(protocol)
     return payload
+
+
+def rebuild_protocol_text(
+    base_text: str,
+    decisions: Sequence[Mapping[str, object]],
+) -> str:
+    """Собирает Markdown, заново применяя решения к базовому тексту.
+
+    Страница хранит базовый текст последнего успешного списка уточнений
+    и при отмене строки заново применяет оставшиеся решения через этот шов.
+
+    Args:
+        base_text: нормативный Markdown до локальных решений вкладки.
+        decisions: оставшиеся ответы и пропуски в порядке таблицы.
+
+    Returns:
+        Текст протокола после применения решений.
+    """
+    return render(apply_answers(parse(base_text), decisions))
+
+
+def _decision(payload: dict[str, object]) -> dict[str, object]:
+    decision: dict[str, object] = {
+        "id": _string_field(payload, "id"),
+        "action": _string_field(payload, "action"),
+    }
+    if "value" in payload:
+        decision["value"] = payload["value"]
+    return decision
+
+
+def _answers_field(payload: dict[str, object]) -> list[dict[str, object]]:
+    raw = payload.get("answers")
+    if not isinstance(raw, list):
+        raise ProtocolInvalidRequestError
+    return [_require_decision_mapping(item) for item in raw]
+
+
+def _require_decision_mapping(item: object) -> dict[str, object]:
+    if not isinstance(item, dict):
+        raise ProtocolInvalidRequestError
+    return cast("dict[str, object]", item)
+
+
+def _finalize_payload(result: FinalizedProtocol) -> dict[str, object]:
+    return {
+        "text": render(result.protocol),
+        "unconfirmed": [
+            {"target": item.target, "reason": item.reason}
+            for item in result.unconfirmed
+        ],
+    }
+
+
+def _clarifications_payload(protocol: Protocol) -> dict[str, object]:
+    return {
+        "clarifications": [
+            _clarification_item(item) for item in build_clarifications(protocol)
+        ]
+    }
+
+
+def _clarification_item(item: Clarification) -> dict[str, str]:
+    return {
+        "id": item.id,
+        "target": item.target,
+        "reason": item.reason,
+        "hint": item.hint,
+        "status": item.status,
+    }
 
 
 def _docx_response(content: bytes) -> Response:

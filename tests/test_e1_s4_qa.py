@@ -829,8 +829,11 @@ def test_application_route_and_method_surface_is_unchanged() -> None:
         "/api/skills": frozenset({"GET"}),
         "/health": frozenset({"GET"}),
         "/protocol": frozenset({"GET"}),
+        "/protocol/answer": frozenset({"POST"}),
+        "/protocol/clarifications": frozenset({"POST"}),
         "/protocol/docx": frozenset({"POST"}),
         "/protocol/draft": frozenset({"POST"}),
+        "/protocol/finalize": frozenset({"POST"}),
         "/skills": frozenset({"GET"}),
         "/skills/reload": frozenset({"POST"}),
     }
