@@ -118,9 +118,7 @@ def test_document_has_only_internal_text_relationships() -> None:
         for hyperlink in paragraph.hyperlinks
     ]
     external = [
-        rel.target_ref
-        for rel in document.part.rels.values()
-        if rel.is_external
+        rel.target_ref for rel in document.part.rels.values() if rel.is_external
     ]
 
     assert hyperlinks == []

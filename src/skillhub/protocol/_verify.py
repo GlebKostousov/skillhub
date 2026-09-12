@@ -12,9 +12,7 @@ from skillhub.protocol._models import Protocol, ProtocolTask
 MAX_VERIFY_CHARS = MAX_PROTOCOL_CHARS
 """Максимальная длина материала для детерминированной проверки."""
 
-_SPEAKER = re.compile(
-    r"(?m)^(?:\[[^\]]{1,40}\]|[0-9A-Za-zА-Яа-яЁё][\w. -]{0,40}):\s*"
-)
+_SPEAKER = re.compile(r"(?m)^(?:\[[^\]]{1,40}\]|[0-9A-Za-zА-Яа-яЁё][\w. -]{0,40}):\s*")
 _CLAUSE = re.compile(r"[.!?]+")
 _CONFIRM = (
     "решили",
@@ -146,9 +144,7 @@ def _unconfirmed_reason(prepared: str, text: str) -> str | None:
 def _windows(prepared: str, needle: str) -> tuple[str, ...]:
     if not needle:
         return ()
-    return tuple(
-        clause for clause in _CLAUSE.split(prepared) if needle in clause
-    )
+    return tuple(clause for clause in _CLAUSE.split(prepared) if needle in clause)
 
 
 def _classify_window(window: str, needle: str) -> set[_Hit]:

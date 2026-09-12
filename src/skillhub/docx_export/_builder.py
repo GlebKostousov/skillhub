@@ -24,6 +24,7 @@ class _TextCell(TypingProtocol):
 
     text: str
 
+
 _TITLE_PREFIX = "Протокол встречи:"
 _DATE_LABEL = "Дата:"
 _PARTICIPANTS_LABEL = "Участники:"
