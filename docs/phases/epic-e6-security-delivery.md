@@ -1,6 +1,6 @@
 # E6. Защита и поставка
 
-Статус: S1–S3 as-built; S4 — демонстрация и документы защиты
+Статус: принят. As-built: `tests/security/`, `eval/run_eval.py --offline`, CI, Docker editable+src, `eval/run_demo.py --offline`.
 Вес: 8 единиц
 Зависит от: E1–E5
 

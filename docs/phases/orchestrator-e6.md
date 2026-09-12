@@ -5,7 +5,7 @@
 База: `812d31dddcd45c6bfc6f9daa054eb398facc6246` (`main` после принятого E5)
 Режим: E1–E5 приняты; feature freeze на новые пользовательские функции
 Run: `e6`
-Статус: запланирован; DAG линейный S1→S2→S3→S4
+Статус: принят as-built на `orch-e6`. Код слайсов S1–S6 закрыт; канонический отчёт — этот файл.
 
 ## Понимание эпика
 
@@ -114,9 +114,19 @@ verify_profile:
 5. `E6-S5` — format-lock пяти файлов для зелёного `ruff format --check`; разблокирует UR-E6-S3-01.
 6. `E6-S6` — layout тарифов в Docker; разблокирует UR-E6-S3-02. Runtime не выдаёт lease в REWORK, поэтому отдельный слайс.
 
+## Проверка эпика
+
+На frozen SHA `71010cf0256d9d7f966ad39680bbce182797e374`: `ruff`, `mypy`,
+`import-linter`, `pytest` (666 passed / 4 skipped / 93.59%), `demo-offline`,
+`eval-offline` — exit 0. Применимые specialists на том же SHA: qa, security,
+architecture, documentation. N/A: migration (нет DDL), performance (нет нового
+hot path), ux-client (нет нового UI-потока), contract (нет несовместимого HTTP),
+data-safety (нет нового persistence-контракта).
+
 ## Правило движения
 
 - Один writer на worktree.
 - Главный агент не пишет product-код.
 - Push в `main` только по явной команде владельца.
 - Feature freeze: новые пользовательские функции не входят в E6.
+- После squash merge next-step только в `plan.md`: без новой команды владельца код не писать.
