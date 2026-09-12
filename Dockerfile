@@ -18,7 +18,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY . /app
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --no-editable
+    uv sync --frozen --no-dev
 
 FROM python:3.13-slim-bookworm AS runtime
 
@@ -29,6 +29,7 @@ RUN groupadd --system --gid 1000 skillhub \
 WORKDIR /app
 
 COPY --from=builder --chown=skillhub:skillhub /app/.venv /app/.venv
+COPY --from=builder --chown=skillhub:skillhub /app/src /app/src
 COPY --from=builder --chown=skillhub:skillhub /app/skills /app/skills
 COPY --from=builder --chown=skillhub:skillhub /app/config /app/config
 

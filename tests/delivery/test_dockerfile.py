@@ -1,5 +1,7 @@
 """Проверяет текстовый контракт multi-stage образа без обязательной сборки."""
 
+from pathlib import PurePosixPath
+
 from tests.delivery._files import (
     dockerfile_instructions,
     final_stage,
@@ -8,6 +10,12 @@ from tests.delivery._files import (
 )
 
 _CONTAINER_BIND = "0.0.0.0"  # noqa: S104
+_APP_FACTORY = PurePosixPath("skillhub/app_factory.py")
+_TARIFFS = PurePosixPath("config/model-tariffs.yaml")
+_EDITABLE_APP_FACTORY = PurePosixPath("/app/src") / _APP_FACTORY
+_WHEEL_APP_FACTORY = (
+    PurePosixPath("/app/.venv/lib/python3.13/site-packages") / _APP_FACTORY
+)
 
 
 def _dockerfile() -> str:
@@ -18,6 +26,30 @@ def _dockerfile() -> str:
 def _instructions() -> list[tuple[str, str]]:
     """Разбирает инструкции корневого Dockerfile."""
     return dockerfile_instructions(_dockerfile())
+
+
+def _project_sync_commands() -> list[str]:
+    """Собирает команды установки проекта в образе."""
+    return [
+        argument
+        for name, argument in _instructions()
+        if name == "RUN"
+        and "uv sync" in argument
+        and "--no-install-project" not in argument
+    ]
+
+
+def _runtime_copy_destinations() -> list[PurePosixPath]:
+    """Собирает целевые пути COPY финального stage."""
+    return [
+        PurePosixPath(argument.split()[-1])
+        for argument in instruction_arguments(final_stage(_instructions()), "COPY")
+    ]
+
+
+def _destination_covers(destinations: list[PurePosixPath], path: PurePosixPath) -> bool:
+    """Проверяет, что путь лежит в скопированном дереве."""
+    return any(path == dest or path.is_relative_to(dest) for dest in destinations)
 
 
 def test_dockerfile_uses_at_least_two_stages() -> None:
@@ -82,3 +114,22 @@ def test_healthcheck_gets_local_health_inside_container() -> None:
     assert _CONTAINER_BIND not in check
     assert "POST" not in check
     assert "DEEPSEEK_API_KEY" not in check
+
+
+def test_runtime_layout_keeps_tariffs_at_app_factory_parents() -> None:
+    """Проверяет, что runtime несёт исходники или тарифы согласованно с parents[2]."""
+    project_syncs = _project_sync_commands()
+    assert project_syncs
+    destinations = _runtime_copy_destinations()
+    editable = all("--no-editable" not in command for command in project_syncs)
+    app_factory = _EDITABLE_APP_FACTORY if editable else _WHEEL_APP_FACTORY
+    tariffs = app_factory.parents[2] / _TARIFFS
+    assert _destination_covers(destinations, app_factory)
+    if editable:
+        assert _destination_covers(destinations, tariffs)
+        return
+    site_tariffs = app_factory.parents[2] / "config"
+    assert any(
+        dest in (site_tariffs, tariffs) or dest.is_relative_to(site_tariffs)
+        for dest in destinations
+    )
