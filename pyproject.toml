@@ -1,0 +1,67 @@
+[project]
+name = "skillhub"
+version = "0.1.0"
+description = "Локальный ассистент с файловым реестром скиллов"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi>=0.141.1",
+    "jinja2>=3.1.6",
+    "pydantic-settings>=2.15.0",
+    "pyyaml>=6.0.3",
+    "structlog>=26.1.0",
+    "uvicorn>=0.40.0",
+]
+
+[dependency-groups]
+dev = [
+    "anyio==4.10.0",
+    "httpx2>=2.12.0",
+    "import-linter>=2.15",
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.7",
+    "types-pyyaml>=6.0.12.20260906",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.11,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812", # Конфликтует с ruff format.
+    "CPY001", # Репозиторий не использует copyright-заголовки.
+    "ISC001", # Конфликтует с ruff format.
+    "RUF002", # Русские докстринги содержат допустимую кириллицу.
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["PLR2004", "S101"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+mypy_path = "src"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+    "--cov=skillhub",
+    "--cov-branch",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-fail-under=85",
+]
+filterwarnings = ["error"]

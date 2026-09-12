@@ -1,0 +1,50 @@
+body {
+  min-height: 100vh;
+}
+
+.skills-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+@media (min-width: 48rem) {
+  .skills-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 62rem) {
+  .skills-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.skill-card {
+  min-width: 0;
+}
+
+.skill-name,
+.skill-description {
+  overflow-wrap: anywhere;
+}
+
+.btn,
+.form-control,
+nav a,
+.touch-target {
+  min-height: 44px;
+}
+
+nav a,
+.touch-target {
+  display: inline-flex;
+  align-items: center;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 0.2rem solid var(--bs-primary);
+  outline-offset: 0.2rem;
+}

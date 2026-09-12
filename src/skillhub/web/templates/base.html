@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}SkillHub{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', path='/favicon.svg') }}" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ url_for('static', path='/vendor/bootstrap-5.3.8.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', path='/app.css') }}">
+  </head>
+  <body class="bg-body-tertiary">
+    <a class="visually-hidden-focusable" href="#content">К содержимому</a>
+    <header class="border-bottom bg-body">
+      <nav aria-label="Основная навигация">
+        <div class="container d-flex align-items-center gap-4 py-3">
+          <a href="/">Главная</a>
+          <a href="/skills">Скиллы</a>
+        </div>
+      </nav>
+    </header>
+    <main id="content" tabindex="-1" class="container py-5">
+      {% block content %}{% endblock %}
+    </main>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

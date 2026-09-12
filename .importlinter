@@ -1,0 +1,13 @@
+[importlinter]
+root_packages =
+    skillhub
+
+[importlinter:contract:core-independence]
+name = Core does not import web or composition roots
+type = forbidden
+source_modules =
+    skillhub.core
+forbidden_modules =
+    skillhub.web
+    skillhub.app_factory
+    skillhub.main

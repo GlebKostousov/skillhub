@@ -1,0 +1,19 @@
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.7z -text !eol
+*.docx -text !eol
+*.gif -text !eol
+*.gz -text !eol
+*.ico -text !eol
+*.jpeg -text !eol
+*.jpg -text !eol
+*.pdf -text !eol
+*.png -text !eol
+*.tar -text !eol
+*.webp -text !eol
+*.woff -text !eol
+*.woff2 -text !eol
+*.zip -text !eol

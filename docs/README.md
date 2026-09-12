@@ -1,0 +1,11 @@
+# Документация SkillHub
+
+| Дверь | Путь |
+|---|---|
+| Очередь эпиков | `docs/phases/backlog-ready-queue.md` |
+| Сделанное | `docs/phases/done-registry.md` |
+| Программа | `docs/phases/skillhub-program.md` |
+| As-built E1 | `docs/phases/orchestrator-e1.md` |
+| Архитектура | `docs/architecture/skillhub.md` |
+| Модель угроз | `docs/security/threat-model.md` |
+| Gate-отчёты E1 | `docs/handoff/archive/` |
