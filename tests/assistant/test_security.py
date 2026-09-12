@@ -5,7 +5,14 @@ import json
 import pytest
 from structlog.testing import capture_logs
 
-from skillhub.assistant import Assistant, PromptSkillHandler, SkillHandlerRegistry
+from pathlib import Path
+
+from skillhub.assistant import (
+    Assistant,
+    PromptSkillHandler,
+    ProtocolSkillHandler,
+    SkillHandlerRegistry,
+)
 from skillhub.classifier import SkillClassifier, SkillMetadata
 from skillhub.core import configure_logging
 from skillhub.llm import FakeLlmGateway, LlmRequest, LlmResult, LlmUsage
@@ -102,10 +109,17 @@ def test_material_attack_does_not_change_trusted_instruction() -> None:
     assert _ATTACK not in _system_text(request)
 
 
-def test_meeting_protocol_does_not_send_material_to_model() -> None:
-    """Проверяет, что недоступный обработчик не отправляет материал."""
+def test_meeting_protocol_does_not_send_material_to_classifier() -> None:
+    """Проверяет, что классификатор не видит материал и тело протокола."""
+    example = (
+        Path(__file__).resolve().parents[2]
+        / "skills"
+        / "meeting-protocol"
+        / "references"
+        / "example.md"
+    ).read_text(encoding="utf-8")
     classify = FakeLlmGateway(result=_result('{"skill": "meeting-protocol"}'))
-    generate = FakeLlmGateway(result=_result("не должен вызываться"))
+    generate = FakeLlmGateway(result=_result(example))
     snapshot = {
         "meeting-protocol": _skill(
             "meeting-protocol",
@@ -116,15 +130,20 @@ def test_meeting_protocol_does_not_send_material_to_model() -> None:
     }
     assistant = Assistant(
         SkillClassifier(classify),
-        SkillHandlerRegistry(PromptSkillHandler(generate)),
+        SkillHandlerRegistry(
+            PromptSkillHandler(generate),
+            extra={"meeting-protocol": ProtocolSkillHandler(generate)},
+        ),
     )
 
     outcome = assistant.run("Составь протокол", _MATERIAL, snapshot)
 
-    assert outcome.outcome == "handler_unavailable"
-    assert generate.requests == []
+    assert outcome.outcome == "success"
     assert _MATERIAL not in _sent_text(classify.requests[0])
     assert "TRUSTED-BODY-meeting-protocol" not in _sent_text(classify.requests[0])
+    assert _MATERIAL in _sent_text(generate.requests[0])
+    assert "TRUSTED-BODY-meeting-protocol" in _system_text(generate.requests[0])
+    assert _MATERIAL not in _system_text(generate.requests[0])
 
 
 def test_prompt_omits_secret_and_file_access(monkeypatch: pytest.MonkeyPatch) -> None:

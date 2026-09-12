@@ -21,9 +21,22 @@ def build_generate_request(skill: Skill, material: str) -> LlmRequest:
     Returns:
         Типизированный запрос к шлюзу модели.
     """
+    return build_instruction_request(skill.body, material)
+
+
+def build_instruction_request(instruction: str, material: str) -> LlmRequest:
+    """Собирает запрос с доверенной инструкцией и отдельным материалом.
+
+    Args:
+        instruction: доверенный системный текст.
+        material: недоверенные данные пользователя.
+
+    Returns:
+        Типизированный запрос к шлюзу модели.
+    """
     return LlmRequest(
         messages=(
-            LlmMessage(role="system", content=skill.body),
+            LlmMessage(role="system", content=instruction),
             LlmMessage(role="user", content=_user_message(material)),
         )
     )

@@ -735,10 +735,16 @@ def test_assistant_demo_returns_none_without_generation() -> None:
     assert material not in _sent_text(gateway.requests[0])
 
 
-def test_assistant_meeting_protocol_shows_badge_and_skips_generate() -> None:
-    """Проверяет бейдж протокола и честный handler_unavailable без Word."""
+def test_assistant_meeting_protocol_returns_parsed_markdown() -> None:
+    """Проверяет бейдж протокола и нормативный Markdown без выгрузки Word."""
     material = "MATERIAL-meeting-protocol"
-    gateway = _QueuedFakeGateway(json.dumps({"skill": "meeting-protocol"}))
+    example = (
+        _SKILLS_ROOT / "meeting-protocol" / "references" / "example.md"
+    ).read_text(encoding="utf-8")
+    gateway = _QueuedFakeGateway(
+        json.dumps({"skill": "meeting-protocol"}),
+        example,
+    )
     client = TestClient(create_app(llm_gateway=gateway))
     token = _assistant_csrf(client)
     page = _parse_assistant_page(client.get("/").text)
@@ -747,16 +753,16 @@ def test_assistant_meeting_protocol_shows_badge_and_skips_generate() -> None:
 
     assert "Протокол встречи" in page.mode_captions
     assert response.status_code == 200
-    assert response.json() == {
-        "selected_skill": "meeting-protocol",
-        "caption": "Протокол встречи",
-        "outcome": "handler_unavailable",
-        "text": None,
-        "message": "Обработчик выбранного режима недоступен.",
-    }
+    payload = response.json()
+    assert payload["selected_skill"] == "meeting-protocol"
+    assert payload["caption"] == "Протокол встречи"
+    assert payload["outcome"] == "success"
+    assert payload["text"] is not None
+    assert "## Задачи" in payload["text"]
     assert "Word" not in response.text
-    assert len(gateway.requests) == 1
+    assert len(gateway.requests) == 2
     assert material not in _sent_text(gateway.requests[0])
+    assert material in _sent_text(gateway.requests[1])
 
 
 def test_assistant_ignores_skills_and_body_from_http() -> None:

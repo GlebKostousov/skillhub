@@ -22,3 +22,34 @@ forbidden_modules =
     skillhub.web
     skillhub.app_factory
     skillhub.main
+
+[importlinter:contract:protocol-independence]
+name = Protocol does not import web, llm, classifier, assistant, docx_export or composition
+type = forbidden
+source_modules =
+    skillhub.protocol
+forbidden_modules =
+    skillhub.web
+    skillhub.llm
+    skillhub.classifier
+    skillhub.assistant
+    skillhub.docx_export
+    skillhub.app_factory
+    skillhub.main
+
+[importlinter:contract:docx-export-isolation]
+name = docx_export imports only the public Protocol model
+type = forbidden
+source_modules =
+    skillhub.docx_export
+forbidden_modules =
+    skillhub.protocol._parser
+    skillhub.protocol._draft
+    skillhub.protocol._renderer
+    skillhub.web
+    skillhub.registry
+    skillhub.llm
+    skillhub.classifier
+    skillhub.assistant
+    skillhub.app_factory
+    skillhub.main
