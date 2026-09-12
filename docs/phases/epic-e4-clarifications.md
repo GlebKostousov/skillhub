@@ -1,6 +1,6 @@
 # E4. Уточнения и качество протокола
 
-Статус: не начат
+Статус: принят. As-built: `build_clarifications` / `apply_answers` / `verify` / `finalize`; HTTP `POST /protocol/clarifications`, `/answer`, `/finalize`; таблица уточнений на `GET /protocol`.
 Вес: 8 единиц
 Зависит от: E3
 
