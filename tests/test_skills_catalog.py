@@ -347,7 +347,9 @@ def test_meeting_protocol_skill_body_includes_grammar_v1() -> None:
     body = next(
         skill.body for skill in report.skills if skill.name == "meeting-protocol"
     )
-    grammar_path = _SKILLS_ROOT / "meeting-protocol" / "references" / "protocol-format.md"
+    grammar_path = (
+        _SKILLS_ROOT / "meeting-protocol" / "references" / "protocol-format.md"
+    )
     grammar = grammar_path.read_text(encoding="utf-8")
 
     assert "Формат протокола v1" in body
