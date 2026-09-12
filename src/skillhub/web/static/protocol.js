@@ -27,6 +27,7 @@ const draftAvailable =
 const rowMemory = new Map();
 let lastItems = [];
 let tableLoaded = false;
+let baseText = "";
 
 if (draftButton instanceof HTMLButtonElement) {
   draftButton.addEventListener("click", () => {
@@ -138,6 +139,7 @@ async function refreshClarifications() {
     return false;
   }
   rowMemory.clear();
+  baseText = fieldValue(markdownArea);
   lastItems = asClarifications(payload);
   tableLoaded = true;
   renderClarifications(lastItems);
@@ -169,7 +171,7 @@ async function submitAnswer(item, action, input) {
       showError(payload);
       return;
     }
-    rememberDecision(item, action, fieldValue(markdownArea), value);
+    rememberDecision(item, action, value);
     writeMarkdown(payload);
     lastItems = mergeRows(asClarifications(payload));
     renderClarifications(lastItems);
@@ -181,7 +183,7 @@ async function submitAnswer(item, action, input) {
   }
 }
 
-function rememberDecision(item, action, previousText, value) {
+function rememberDecision(item, action, value) {
   rowMemory.set(item.id, {
     item: {
       id: item.id,
@@ -190,37 +192,98 @@ function rememberDecision(item, action, previousText, value) {
       hint: item.hint,
     },
     status: action === "skip" ? "skipped" : "answered",
-    previousText,
     value,
   });
 }
 
-function cancelChoice(id) {
+async function cancelChoice(id) {
   const memory = rowMemory.get(id);
   if (!memory) {
     return;
   }
-  if (
-    memory.status === "answered" &&
-    markdownArea instanceof HTMLTextAreaElement
-  ) {
-    markdownArea.value = memory.previousText;
-  }
   rowMemory.delete(id);
-  lastItems = lastItems.map((item) => {
-    if (item.id !== id) {
-      return item;
+  clearMessages();
+  setBusy(true, "Выбор отменяется…");
+  try {
+    const remaining = remainingDecisions();
+    if (remaining.length === 0) {
+      writeMarkdown({ text: baseText });
+      lastItems = pendingItems(lastItems);
+      renderClarifications(lastItems);
+      setText(statusNode, "Выбор отменён.");
+      return;
     }
-    return {
-      id: memory.item.id,
-      target: memory.item.target,
-      reason: memory.item.reason,
-      hint: memory.item.hint,
+    const rebuilt = await replayRemaining(baseText, remaining);
+    if (!rebuilt) {
+      rowMemory.set(id, memory);
+      return;
+    }
+    writeMarkdown(rebuilt);
+    lastItems = mergeRows(asClarifications(rebuilt));
+    renderClarifications(lastItems);
+    setText(statusNode, "Выбор отменён.");
+  } catch {
+    rowMemory.set(id, memory);
+    showConnectionError();
+  } finally {
+    setBusy(false);
+  }
+}
+
+function pendingItems(items) {
+  const rows = [];
+  for (const item of items) {
+    rows.push({
+      id: item.id,
+      target: item.target,
+      reason: item.reason,
+      hint: item.hint,
       status: "pending",
+    });
+  }
+  return rows;
+}
+
+async function replayRemaining(text, remaining) {
+  let current = text;
+  let payload = { text: current, clarifications: [] };
+  for (const decision of remaining) {
+    const body = {
+      csrf_token: csrfValue(),
+      text: current,
+      id: decision.item.id,
+      action: decision.status === "skipped" ? "skip" : "answer",
     };
-  });
-  renderClarifications(lastItems);
-  setText(statusNode, "Выбор отменён.");
+    if (decision.status === "answered") {
+      body.value = decision.value;
+    }
+    const response = await postJson("/protocol/answer", body);
+    payload = await readJson(response);
+    if (!response.ok) {
+      showError(payload);
+      return null;
+    }
+    current = textField(payload, "text");
+  }
+  return payload;
+}
+
+function remainingDecisions() {
+  const decisions = [];
+  const seen = new Set();
+  for (const item of lastItems) {
+    const memory = rowMemory.get(item.id);
+    if (memory) {
+      decisions.push(memory);
+      seen.add(item.id);
+    }
+  }
+  for (const [id, memory] of rowMemory) {
+    if (!seen.has(id)) {
+      decisions.push(memory);
+    }
+  }
+  return decisions;
 }
 
 function mergeRows(serverItems) {
@@ -352,7 +415,7 @@ function actionsCell(item) {
     void submitAnswer(item, "skip", rowInput(item.id));
   });
   cancel.addEventListener("click", () => {
-    cancelChoice(item.id);
+    void cancelChoice(item.id);
   });
   cell.appendChild(send);
   cell.appendChild(skip);

@@ -9,6 +9,7 @@ from structlog.testing import capture_logs
 
 from skillhub.app_factory import create_app
 from skillhub.protocol import parse
+from skillhub.web.protocol_routes import rebuild_protocol_text
 
 _WEB_ROOT = Path(__file__).resolve().parents[1] / "src" / "skillhub" / "web"
 _PROTOCOL_HTML = _WEB_ROOT / "templates" / "protocol.html"
@@ -32,6 +33,7 @@ _VALID_MARKDOWN = """# Протокол встречи: Тема
 - вопрос
 """
 _GAP_MARKDOWN = _VALID_MARKDOWN.replace("**Дата:** 2026-09-12", "**Дата:** —")
+_TWO_GAP_MARKDOWN = _GAP_MARKDOWN.replace("**Участники:** Анна", "**Участники:** —")
 _INVALID_MARKDOWN = "это не протокол"
 _DATE_QUESTION = {
     "id": "date",
@@ -235,6 +237,25 @@ def test_clarification_routes_reject_foreign_origin_and_wrong_csrf() -> None:
     assert foreign.json()["error"]["code"] == "protocol_forbidden"
     assert wrong.status_code == 403
     assert wrong.json()["error"]["code"] == "protocol_forbidden"
+
+
+def test_cancel_first_of_two_answers_keeps_second_field() -> None:
+    """Проверяет, что отмена первого ответа сохраняет второе поле."""
+    both = (
+        {"id": "date", "action": "answer", "value": "2026-10-01"},
+        {"id": "participants", "action": "answer", "value": "Борис"},
+    )
+    after_both = rebuild_protocol_text(_TWO_GAP_MARKDOWN, both)
+    after_cancel_first = rebuild_protocol_text(_TWO_GAP_MARKDOWN, both[1:])
+    script = _PROTOCOL_JS.read_text(encoding="utf-8")
+
+    assert parse(after_both).date == "2026-10-01"
+    assert parse(after_both).participants == ("Борис",)
+    assert parse(after_cancel_first).date == "—"
+    assert parse(after_cancel_first).participants == ("Борис",)
+    assert "previousText" not in script
+    assert "baseText" in script
+    assert "replayRemaining" in script
 
 
 def test_answer_parse_error_keeps_draft_envelope() -> None:

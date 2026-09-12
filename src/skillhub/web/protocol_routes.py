@@ -2,6 +2,7 @@
 
 import json
 import secrets
+from collections.abc import Mapping, Sequence
 from typing import cast
 
 import structlog
@@ -128,12 +129,12 @@ class _ProtocolRoutes:
         payload = await self._read_json(request)
         text = _string_field(payload, "text")
         try:
-            protocol = parse(text)
+            rebuilt = rebuild_protocol_text(text, (_decision(payload),))
         except ProtocolParseError as exc:
             return _parse_error_response(exc)
-        updated = apply_answers(protocol, (_decision(payload),))
+        updated = parse(rebuilt)
         content = _clarifications_payload(updated)
-        content["text"] = render(updated)
+        content["text"] = rebuilt
         return JSONResponse(content=content)
 
     def _require_generator(self) -> ProtocolTextGenerator:
@@ -335,6 +336,25 @@ def _draft_payload(protocol: Protocol) -> dict[str, object]:
     payload = cast("dict[str, object]", protocol.model_dump())
     payload["text"] = render(protocol)
     return payload
+
+
+def rebuild_protocol_text(
+    base_text: str,
+    decisions: Sequence[Mapping[str, object]],
+) -> str:
+    """Собирает Markdown, заново применяя решения к базовому тексту.
+
+    Страница хранит базовый текст последнего успешного списка уточнений
+    и при отмене строки заново применяет оставшиеся решения через этот шов.
+
+    Args:
+        base_text: нормативный Markdown до локальных решений вкладки.
+        decisions: оставшиеся ответы и пропуски в порядке таблицы.
+
+    Returns:
+        Текст протокола после применения решений.
+    """
+    return render(apply_answers(parse(base_text), decisions))
 
 
 def _decision(payload: dict[str, object]) -> dict[str, object]:
