@@ -16,6 +16,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Применить локальные настройки Git
+        run: |
+          git config --local core.autocrlf false
+          git config --local core.safecrlf true
+          git config --local fetch.prune true
+          git config --local pull.ff only
+          git config --local push.autoSetupRemote true
+
       - name: Установить uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
