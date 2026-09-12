@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from skillhub import web
 from skillhub._server_logging import configure_server_logging
 from skillhub.core import Settings, configure_logging
 from skillhub.llm import DeepSeekLlmGateway, LlmGateway
@@ -16,7 +17,6 @@ from skillhub.web import (
     SecurityHeadersMiddleware,
     StrictHostMiddleware,
     TrustedHostEnvelopeMiddleware,
-    create_assistant_router,
     create_protocol_router,
     create_router,
     install_error_handlers,
@@ -73,14 +73,16 @@ def create_app(
             csrf_token=csrf_token,
         )
     )
-    app.include_router(
-        create_assistant_router(
-            templates,
-            registry=registry,
-            csrf_token=csrf_token,
-            llm_gateway=gateway,
+    create_assistant_router = getattr(web, "create_assistant_router", None)
+    if create_assistant_router is not None:
+        app.include_router(
+            create_assistant_router(
+                templates,
+                registry=registry,
+                csrf_token=csrf_token,
+                llm_gateway=gateway,
+            )
         )
-    )
     app.include_router(
         create_protocol_router(
             templates,

@@ -1,11 +1,10 @@
 """Проверяет границы доверия оркестрации и отсутствие утечек."""
 
 import json
+from pathlib import Path
 
 import pytest
 from structlog.testing import capture_logs
-
-from pathlib import Path
 
 from skillhub.assistant import (
     Assistant,
