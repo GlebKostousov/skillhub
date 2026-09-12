@@ -7,6 +7,7 @@ import httpx
 import pytest
 import yaml
 
+from skillhub.app_factory import create_app
 from skillhub.llm import (
     DEEPSEEK_API_URL,
     DeepSeekLlmGateway,
@@ -161,7 +162,7 @@ def test_provider_max_tokens_matches_tariff_clamp(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Проверяет, что тело шлёт тот же потолок max_tokens, что и reserve."""
+    """Проверяет, что посев и тело используют потолок тарифа."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("DEEPSEEK_API_KEY", _PROVIDER_VALUE)
     seen: list[dict[str, object]] = []
@@ -176,8 +177,29 @@ def test_provider_max_tokens_matches_tariff_clamp(
 
     gateway.complete(_request())
 
-    assert store.snapshot().values.max_tokens == 16384
+    assert store.snapshot().values.max_tokens == 4096
     assert seen[0]["max_tokens"] == 4096
+
+
+def test_fileless_create_app_complete_sends_seeded_max_tokens(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Проверяет, что file-less create_app шлёт посеянный max_tokens."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", _PROVIDER_VALUE)
+    seen: list[dict[str, object]] = []
+    app = create_app(skills_root=Path(__file__).resolve().parents[2] / "skills")
+    store = app.state.runtime_store
+    tokens = next(
+        field for field in store.snapshot().fields if field.name == "max_tokens"
+    )
+    gateway = DeepSeekLlmGateway(client=_client(seen), store=store)
+
+    gateway.complete(_request())
+
+    assert tokens.value <= tokens.max
+    assert seen[0]["max_tokens"] == tokens.value
 
 
 class _SaveThenDeepSeek(LlmGateway):

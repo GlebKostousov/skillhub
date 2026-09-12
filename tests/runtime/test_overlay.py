@@ -250,6 +250,21 @@ def test_unknown_model_and_foreign_ceiling_are_rejected(
         store.save(_payload(model="deepseek-reasoner", max_tokens=9000))
 
 
+def test_seed_clamps_max_tokens_to_catalog_ceiling(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Проверяет, что посев max_tokens не превышает потолок каталога."""
+    monkeypatch.chdir(tmp_path)
+    snapshot = RuntimeStore({"deepseek-flash": 4096}).snapshot()
+    tokens = next(field for field in snapshot.fields if field.name == "max_tokens")
+
+    assert tokens.value == 4096
+    assert tokens.default == 4096
+    assert tokens.max == 4096
+    assert snapshot.values.max_tokens == 4096
+
+
 def _payload(**overrides: object) -> dict[str, object]:
     values: dict[str, object] = {
         "model": "deepseek-flash",

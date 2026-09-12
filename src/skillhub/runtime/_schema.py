@@ -115,18 +115,25 @@ class _OverlayModel(BaseModel):
         return self
 
 
-def seed_values(daily_budget_nanos: int | None) -> OverlayValues:
+def seed_values(
+    daily_budget_nanos: int | None,
+    model_limits: Mapping[str, int] | None = None,
+) -> OverlayValues:
     """Собирает посевные значения редактируемых полей.
 
     Args:
         daily_budget_nanos: посевной дневной потолок или его отсутствие.
+        model_limits: допустимые модели и потолок max_tokens.
 
     Returns:
         Посевной набор значений.
     """
+    max_tokens = SEED_MAX_TOKENS
+    if model_limits is not None:
+        max_tokens = min(SEED_MAX_TOKENS, model_limits[SEED_MODEL])
     return OverlayValues(
         model=SEED_MODEL,
-        max_tokens=SEED_MAX_TOKENS,
+        max_tokens=max_tokens,
         temperature=SEED_TEMPERATURE,
         timeout=SEED_TIMEOUT,
         stream=SEED_STREAM,

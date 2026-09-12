@@ -30,7 +30,7 @@ class RuntimeStore:
             daily_budget_nanos: посевной дневной потолок или его отсутствие.
         """
         self._limits = dict(model_limits)
-        self._defaults = seed_values(daily_budget_nanos)
+        self._defaults = seed_values(daily_budget_nanos, model_limits)
 
     def snapshot(self) -> RuntimeSnapshot:
         """Возвращает замороженный каталог из посева или файла.

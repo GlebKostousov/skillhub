@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from skillhub.runtime import OverlayField, RuntimeSnapshot, RuntimeStore
+from skillhub.runtime._constants import MAX_STOP_ITEMS, MAX_STOP_LENGTH
 from skillhub.web._settings_guard import (
     validate_csrf_token,
     validate_settings_request,
@@ -183,6 +184,8 @@ def _label(value: object) -> str:
 
 
 def _range_label(field: dict[str, object]) -> str:
+    if field.get("kind") == "string_list":
+        return f"{MAX_STOP_ITEMS} элементов, {MAX_STOP_LENGTH} символов"
     allowed = field.get("allowed")
     if type(allowed) is list:
         return "Допустимо: " + ", ".join(_label(item) for item in allowed)

@@ -86,6 +86,32 @@ def test_settings_page_and_json_share_catalog(client: TestClient) -> None:
     assert payload == client.get("/api/settings").json()
 
 
+def test_fileless_get_values_are_within_limits_and_postable(
+    client: TestClient,
+) -> None:
+    """Проверяет, что посев GET укладывается в потолок и сохраняется без правок."""
+    before = client.get("/api/settings").json()
+    tokens = next(field for field in before["fields"] if field["name"] == "max_tokens")
+    values = _values_from(before)
+
+    response = _post_settings(client, _csrf(client), values)
+
+    assert tokens["value"] <= tokens["max"]
+    assert response.status_code == 200
+    assert _values_from(response.json()) == values
+
+
+def test_stop_range_label_names_item_and_length_limits(
+    client: TestClient,
+) -> None:
+    """Проверяет, что подпись stop называет лимит строк и длины."""
+    page = client.get("/settings")
+
+    assert "Диапазон: до 16" not in page.text
+    assert "16 элементов" in page.text
+    assert "256 символов" in page.text
+
+
 def test_settings_json_omits_provider_credentials(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
