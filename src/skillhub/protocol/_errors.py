@@ -80,6 +80,14 @@ class UnresolvedClarificationError(SkillHubError):
     public_message = "Есть незакрытые уточнения."
 
 
+class VerifyMaterialTooLargeError(SkillHubError):
+    """Описывает отказ проверки при превышении предела материала."""
+
+    code = "verify_material_too_large"
+    status_code = 422
+    public_message = "Материал для проверки превышает допустимый размер."
+
+
 def reject(line: int, expected: str, got: str) -> NoReturn:
     """Поднимает структурный отказ разбора одной строки.
 
