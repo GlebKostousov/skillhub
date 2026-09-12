@@ -38,6 +38,7 @@ _NEGATE = (
     "не утвердили",
     "не утверждено",
     "не назначили",
+    "не назначено",
     "отменили",
     "отменено",
 )
@@ -130,14 +131,14 @@ def _unconfirmed_reason(prepared: str, text: str) -> str | None:
     hits: set[_Hit] = set()
     for window in _windows(prepared, text):
         hits.update(_classify_window(window))
+    if "attack" in hits:
+        return _REASON_ATTACK
     if "confirm" in hits and "negate" in hits:
         return _REASON_CONFLICT
     if "confirm" in hits:
         return None
     if "discuss" in hits:
         return _REASON_DISCUSSION
-    if "attack" in hits:
-        return _REASON_ATTACK
     return _REASON_NO_MARKER
 
 
