@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Протокол встречи — SkillHub{% endblock %}
+
+{% block content %}
+  <header class="mb-4">
+    <p class="text-body-secondary mb-2">Черновик и выгрузка</p>
+    <h1 class="display-6 mb-3">Протокол встречи</h1>
+    <p class="lead mb-0">
+      Соберите черновик из транскрипции или выгрузите готовый протокол в Word.
+    </p>
+  </header>
+
+  <input type="hidden" id="protocol-csrf" name="csrf_token" value="{{ csrf_token }}">
+
+  <section class="card border-0 shadow-sm mb-4" aria-labelledby="protocol-transcript-title">
+    <div class="card-body p-4">
+      <h2 id="protocol-transcript-title" class="h4">Транскрипция</h2>
+      <label class="form-label" for="protocol-transcript">Текст встречи</label>
+      <textarea
+        class="form-control mb-3"
+        id="protocol-transcript"
+        rows="8"
+        maxlength="1048576"
+      ></textarea>
+      <button class="btn btn-primary" type="button" id="protocol-draft-button">
+        Собрать черновик
+      </button>
+    </div>
+  </section>
+
+  <section class="card border-0 shadow-sm mb-4" aria-labelledby="protocol-markdown-title">
+    <div class="card-body p-4">
+      <h2 id="protocol-markdown-title" class="h4">Текст протокола</h2>
+      <label class="form-label" for="protocol-markdown">Нормативный Markdown</label>
+      <textarea
+        class="form-control mb-3"
+        id="protocol-markdown"
+        rows="16"
+        maxlength="65536"
+      ></textarea>
+      <button class="btn btn-outline-primary" type="button" id="protocol-download-button">
+        Выгрузить Word
+      </button>
+    </div>
+  </section>
+
+  <p id="protocol-status" class="visually-hidden" role="status" aria-live="polite"></p>
+  <p id="protocol-error" role="alert" aria-live="assertive"></p>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', path='/protocol.js') }}" defer></script>
+{% endblock %}

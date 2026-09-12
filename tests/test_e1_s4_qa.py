@@ -815,10 +815,10 @@ def test_application_route_and_method_surface_is_unchanged() -> None:
         for route in app.routes
         if isinstance((router := getattr(route, "original_router", None)), APIRouter)
     ]
-    assert len(included_routers) == 1
     routes = {
         route.path: frozenset(route.methods or ())
-        for route in included_routers[0].routes
+        for router in included_routers
+        for route in router.routes
         if isinstance(route, APIRoute)
     }
 
@@ -826,6 +826,9 @@ def test_application_route_and_method_surface_is_unchanged() -> None:
         "/": frozenset({"GET"}),
         "/api/skills": frozenset({"GET"}),
         "/health": frozenset({"GET"}),
+        "/protocol": frozenset({"GET"}),
+        "/protocol/docx": frozenset({"POST"}),
+        "/protocol/draft": frozenset({"POST"}),
         "/skills": frozenset({"GET"}),
         "/skills/reload": frozenset({"POST"}),
     }
@@ -854,8 +857,7 @@ def test_local_javascript_avoids_known_html_execution_sinks() -> None:
     scripts = sorted(
         (_SKILLS_ROOT.parent / "src" / "skillhub" / "web" / "static").glob("*.js")
     )
-    assert [script.name for script in scripts] == ["app.js"]
-    source = scripts[0].read_text(encoding="utf-8")
+    assert [script.name for script in scripts] == ["app.js", "protocol.js"]
     forbidden_sinks = [
         "innerHTML",
         "outerHTML",
@@ -865,6 +867,7 @@ def test_local_javascript_avoids_known_html_execution_sinks() -> None:
         "eval(",
         "new Function",
     ]
+    sources = [script.read_text(encoding="utf-8") for script in scripts]
 
-    assert "textContent" in source
-    assert all(sink not in source for sink in forbidden_sinks)
+    assert all("textContent" in source for source in sources)
+    assert all(sink not in source for source in sources for sink in forbidden_sinks)

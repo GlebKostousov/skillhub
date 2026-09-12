@@ -679,6 +679,7 @@ def test_composition_root_uses_complete_public_web_facade() -> None:
         "SecurityHeadersMiddleware",
         "StrictHostMiddleware",
         "TrustedHostEnvelopeMiddleware",
+        "create_protocol_router",
         "create_router",
         "install_error_handlers",
     }
