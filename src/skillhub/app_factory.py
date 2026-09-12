@@ -22,6 +22,7 @@ from skillhub.web import (
     TrustedHostEnvelopeMiddleware,
     create_protocol_router,
     create_router,
+    create_settings_router,
     create_usage_router,
     install_error_handlers,
 )
@@ -103,6 +104,14 @@ def create_app(
         create_usage_router(
             templates,
             ledger=ledger,
+            store=store,
+        ),
+    )
+    _attach_usage_routes(
+        app,
+        create_settings_router(
+            templates,
+            csrf_token=csrf_token,
             store=store,
         ),
     )

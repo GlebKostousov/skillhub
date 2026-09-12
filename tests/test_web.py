@@ -985,3 +985,18 @@ def test_classifier_matrix_runner_is_ready_without_live_key() -> None:
     except SkillHubError:
         return
     assert accuracy >= 0.95
+
+
+def test_navbar_includes_settings_and_keeps_existing_links() -> None:
+    """Проверяет вкладку «Настройки» рядом с прежними ссылками."""
+    home = TestClient(create_app()).get("/")
+    settings = TestClient(create_app()).get("/settings")
+
+    assert '<a href="/">Главная</a>' in home.text
+    assert '<a href="/skills">Скиллы</a>' in home.text
+    assert '<a href="/protocol">Протокол</a>' in home.text
+    assert '<a href="/usage">Расходы</a>' in home.text
+    assert '<a href="/settings">Настройки</a>' in home.text
+    assert 'aria-current="page"' not in home.text
+    assert '<a href="/settings" aria-current="page">Настройки</a>' in settings.text
+    assert '<a href="/usage">Расходы</a>' in settings.text

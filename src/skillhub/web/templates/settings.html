@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Настройки — SkillHub{% endblock %}
+
+{% block content %}
+  <header class="mb-4">
+    <p class="text-body-secondary mb-2">Живое наложение модели</p>
+    <h1 class="display-6 mb-3">Настройки</h1>
+    <p class="lead mb-0">
+      Подсказка, допустимый диапазон и значение по умолчанию для каждого поля.
+    </p>
+  </header>
+
+  <p class="text-body-secondary mb-4">
+    Поля environment и usage_path задаются при запуске и здесь не редактируются.
+  </p>
+
+  <form class="settings-form" data-settings-form>
+    <input type="hidden" id="settings-csrf" name="csrf_token" value="{{ csrf_token }}">
+
+    {% for field in fields %}
+      <section class="card border-0 shadow-sm mb-3 settings-field" aria-labelledby="settings-{{ field.name }}">
+        <div class="card-body p-4">
+          <h2 id="settings-{{ field.name }}" class="h5">{{ field.name }}</h2>
+          <p class="mb-2">{{ field.hint }}</p>
+          {% if field.range_label %}
+            <p class="text-body-secondary mb-2">{{ field.range_label }}</p>
+          {% endif %}
+          <p class="text-body-secondary mb-3">По умолчанию: {{ field.default_label }}</p>
+
+          <label class="form-label" for="settings-input-{{ field.name }}">Текущее значение</label>
+          {% if field.options %}
+            <select
+              class="form-select"
+              id="settings-input-{{ field.name }}"
+              name="{{ field.name }}"
+              data-settings-field
+              data-kind="{{ field.kind }}"
+            >
+              {% for option in field.options %}
+                <option
+                  value="{{ option.value }}"
+                  {% if option.value == field.input_value %}selected{% endif %}
+                >{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          {% elif field.kind == "string_list" %}
+            <textarea
+              class="form-control"
+              id="settings-input-{{ field.name }}"
+              name="{{ field.name }}"
+              rows="3"
+              data-settings-field
+              data-kind="string_list"
+            >{{ field.input_value }}</textarea>
+          {% else %}
+            <input
+              class="form-control"
+              id="settings-input-{{ field.name }}"
+              name="{{ field.name }}"
+              type="number"
+              data-settings-field
+              data-kind="{{ field.kind }}"
+              {% if field.min is defined %}min="{{ field.min }}"{% endif %}
+              {% if field.max is defined %}max="{{ field.max }}"{% endif %}
+              {% if field.kind == "integer" %}step="1"{% else %}step="any"{% endif %}
+              value="{{ field.input_value }}"
+            >
+          {% endif %}
+        </div>
+      </section>
+    {% endfor %}
+
+    <div class="d-flex flex-wrap align-items-center gap-3">
+      <button class="btn btn-primary" type="submit" data-settings-submit>Сохранить</button>
+      <p class="mb-0" data-settings-status role="status" aria-live="polite"></p>
+    </div>
+  </form>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', path='/settings.js') }}" defer></script>
+{% endblock %}
