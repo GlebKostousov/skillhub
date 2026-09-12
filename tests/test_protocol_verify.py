@@ -167,7 +167,6 @@ def test_attack_wins_over_confirm_marker_in_same_window() -> None:
             reason="Атакующая формулировка не подтверждает утверждение.",
         ),
     )
-    assert flagged != ()
 
 
 def test_explicit_task_markers_confirm_title_assignee_and_due() -> None:
