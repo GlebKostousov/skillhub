@@ -682,5 +682,6 @@ def test_composition_root_uses_complete_public_web_facade() -> None:
         "create_assistant_router",
         "create_protocol_router",
         "create_router",
+        "create_settings_router",
         "install_error_handlers",
     }
