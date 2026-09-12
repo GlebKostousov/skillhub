@@ -55,7 +55,7 @@ class _OverlayModel(BaseModel):
     model: str
     max_tokens: int = Field(ge=MIN_MAX_TOKENS)
     temperature: int | float = Field(ge=MIN_TEMPERATURE, le=MAX_TEMPERATURE)
-    timeout: float = Field(gt=MIN_TIMEOUT, le=MAX_TIMEOUT)
+    timeout: float = Field(ge=MIN_TIMEOUT, le=MAX_TIMEOUT)
     stream: Literal[False]
     thinking: Literal["enabled", "disabled"]
     reasoning_effort: Literal["low", "high", "max"]

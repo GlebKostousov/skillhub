@@ -176,6 +176,45 @@ def test_successful_save_is_atomic_and_visible_to_next_snapshot(
     assert snapshot.fields[1].default == 16384
 
 
+def test_timeout_zero_matches_catalog_minimum(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Проверяет, что каталог и схема принимают одну нижнюю границу timeout."""
+    monkeypatch.chdir(tmp_path)
+    store = RuntimeStore(_LIMITS)
+    timeout_field = next(
+        field for field in store.snapshot().fields if field.name == "timeout"
+    )
+
+    store.save(_payload(timeout=timeout_field.min))
+
+    assert timeout_field.min == 0.0
+    assert store.snapshot().values.timeout == 0.0
+
+
+def test_mkstemp_failure_raises_overlay_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Проверяет отказ создания временного файла как overlay_unavailable."""
+    monkeypatch.chdir(tmp_path)
+    store = RuntimeStore(_LIMITS)
+
+    def fail_mkstemp(*_arguments: object, **_options: object) -> tuple[int, str]:
+        raise OSError
+
+    monkeypatch.setattr("skillhub.runtime._store.tempfile.mkstemp", fail_mkstemp)
+
+    with pytest.raises(OverlayUnavailableError) as captured:
+        store.save(_payload())
+
+    assert captured.value.code == "overlay_unavailable"
+    assert captured.value.status_code == 409
+    assert not (tmp_path / _OVERLAY_NAME).exists()
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
 def test_write_failure_raises_overlay_unavailable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

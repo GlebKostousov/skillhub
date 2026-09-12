@@ -82,20 +82,22 @@ def _load_values(
 
 def _write_atomic(path: Path, payload: Mapping[str, object]) -> None:
     text = json.dumps(payload, ensure_ascii=False)
-    handle, tmp_name = tempfile.mkstemp(
-        prefix=TEMP_PREFIX,
-        suffix=".tmp",
-        dir=path.parent,
-    )
-    tmp_path = Path(tmp_name)
+    tmp_path: Path | None = None
     try:
+        handle, tmp_name = tempfile.mkstemp(
+            prefix=TEMP_PREFIX,
+            suffix=".tmp",
+            dir=path.parent,
+        )
+        tmp_path = Path(tmp_name)
         with os.fdopen(handle, "w", encoding="utf-8") as stream:
             stream.write(text)
             stream.flush()
             os.fsync(stream.fileno())
         tmp_path.replace(path)
     except OSError:
-        tmp_path.unlink(missing_ok=True)
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
         raise OverlayUnavailableError from None
 
 
