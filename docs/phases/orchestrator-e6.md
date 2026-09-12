@@ -112,6 +112,7 @@ verify_profile:
 3. `E6-S3` — CI и Docker; capsule `docs/phases/capsules/e6-s3.md`.
 4. `E6-S4` — демонстрация и документы защиты; capsule `docs/phases/capsules/e6-s4.md`.
 5. `E6-S5` — format-lock пяти файлов для зелёного `ruff format --check`; разблокирует UR-E6-S3-01.
+6. `E6-S6` — layout тарифов в Docker; разблокирует UR-E6-S3-02. Runtime не выдаёт lease в REWORK, поэтому отдельный слайс.
 
 ## Правило движения
 
