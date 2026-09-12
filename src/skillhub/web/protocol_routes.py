@@ -1,4 +1,4 @@
-"""Собирает страницу черновика и выгрузку протокола в Word."""
+"""Собирает страницу черновика, уточнения и выгрузку протокола в Word."""
 
 import json
 import secrets
@@ -13,9 +13,12 @@ from starlette.responses import Response
 from skillhub.core import SkillHubError
 from skillhub.docx_export import build_docx
 from skillhub.protocol import (
+    Clarification,
     Protocol,
     ProtocolParseError,
     ProtocolTextGenerator,
+    apply_answers,
+    build_clarifications,
     create_draft,
     parse,
     render,
@@ -110,6 +113,29 @@ class _ProtocolRoutes:
             return _parse_error_response(exc)
         return _docx_response(build_docx(protocol))
 
+    async def clarifications(self, request: Request) -> Response:
+        """Возвращает список уточнений по тексту протокола."""
+        payload = await self._read_json(request)
+        text = _string_field(payload, "text")
+        try:
+            protocol = parse(text)
+        except ProtocolParseError as exc:
+            return _parse_error_response(exc)
+        return JSONResponse(content=_clarifications_payload(protocol))
+
+    async def answer(self, request: Request) -> Response:
+        """Применяет одно решение уточнения к тексту протокола."""
+        payload = await self._read_json(request)
+        text = _string_field(payload, "text")
+        try:
+            protocol = parse(text)
+        except ProtocolParseError as exc:
+            return _parse_error_response(exc)
+        updated = apply_answers(protocol, (_decision(payload),))
+        content = _clarifications_payload(updated)
+        content["text"] = render(updated)
+        return JSONResponse(content=content)
+
     def _require_generator(self) -> ProtocolTextGenerator:
         if self._generator is None:
             raise GenerationUnavailableError
@@ -138,7 +164,7 @@ def create_protocol_router(
         generator: порт генерации или ``None``, если генерация недоступна.
 
     Returns:
-        Маршрутизатор с страницей черновика и двумя изменяющими швами.
+        Маршрутизатор с страницей черновика и изменяющими швами.
 
     Raises:
         ValueError: настроенный секрет CSRF не соответствует контракту.
@@ -162,6 +188,18 @@ def create_protocol_router(
     router.add_api_route(
         "/protocol/docx",
         routes.export_docx,
+        methods=["POST"],
+        response_model=None,
+    )
+    router.add_api_route(
+        "/protocol/clarifications",
+        routes.clarifications,
+        methods=["POST"],
+        response_model=None,
+    )
+    router.add_api_route(
+        "/protocol/answer",
+        routes.answer,
         methods=["POST"],
         response_model=None,
     )
@@ -297,6 +335,34 @@ def _draft_payload(protocol: Protocol) -> dict[str, object]:
     payload = cast("dict[str, object]", protocol.model_dump())
     payload["text"] = render(protocol)
     return payload
+
+
+def _decision(payload: dict[str, object]) -> dict[str, object]:
+    decision: dict[str, object] = {
+        "id": _string_field(payload, "id"),
+        "action": _string_field(payload, "action"),
+    }
+    if "value" in payload:
+        decision["value"] = payload["value"]
+    return decision
+
+
+def _clarifications_payload(protocol: Protocol) -> dict[str, object]:
+    return {
+        "clarifications": [
+            _clarification_item(item) for item in build_clarifications(protocol)
+        ]
+    }
+
+
+def _clarification_item(item: Clarification) -> dict[str, str]:
+    return {
+        "id": item.id,
+        "target": item.target,
+        "reason": item.reason,
+        "hint": item.hint,
+        "status": item.status,
+    }
 
 
 def _docx_response(content: bytes) -> Response:
