@@ -189,6 +189,32 @@ def test_meeting_protocol_renders_parsed_draft() -> None:
     )
 
 
+def test_meeting_protocol_instruction_includes_grammar_v1() -> None:
+    """Проверяет, что живой обработчик отдаёт модели грамматику v1 из тела скилла."""
+    example = (
+        _REPOSITORY_ROOT / "skills" / "meeting-protocol" / "references" / "example.md"
+    ).read_text(encoding="utf-8")
+    report = SkillRegistry(_SKILLS_ROOT).load()
+    snapshot = {skill.name: skill for skill in report.skills}
+    assistant, classify, generate = _assistant(
+        '{"skill": "meeting-protocol"}',
+        generate_text=example,
+    )
+
+    outcome = assistant.run("Составь протокол совещания", _MATERIAL, snapshot)
+
+    assert outcome.outcome == "success"
+    sent = _system_text(generate.requests[0])
+    assert snapshot["meeting-protocol"].body == sent
+    assert "Формат протокола v1" in sent
+    assert "## Обсуждение" in sent
+    assert "| Задача | Ответственный | Срок |" in sent
+    assert _MATERIAL in _sent_text(generate.requests[0])
+    assert _MATERIAL not in "".join(
+        _sent_text(request) for request in classify.requests
+    )
+
+
 def test_html_outcome_text_is_plain() -> None:
     """Проверяет, что HTML ответа остаётся текстом исхода."""
     assistant, _classify, _generate = _assistant(
