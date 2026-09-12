@@ -1,5 +1,7 @@
 """Определяет типизированную ошибку разбора структуры протокола."""
 
+from typing import NoReturn
+
 from skillhub.core import SkillHubError
 
 
@@ -28,3 +30,14 @@ class ProtocolParseError(SkillHubError):
         self.expected = expected
         self.got = got
         super().__init__()
+
+
+def reject(line: int, expected: str, got: str) -> NoReturn:
+    """Поднимает структурный отказ разбора одной строки.
+
+    Args:
+        line: номер строки исходного текста.
+        expected: ожидаемый структурный элемент.
+        got: фактически встреченный фрагмент.
+    """
+    raise ProtocolParseError(line, expected, got)
