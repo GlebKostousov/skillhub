@@ -9,6 +9,7 @@ from skillhub.llm._constants import (
 from skillhub.llm._deepseek import DeepSeekLlmGateway
 from skillhub.llm._errors import GenerationUnavailableError, ProviderError
 from skillhub.llm._fake import FakeLlmGateway
+from skillhub.llm._metered import MeteredLlmGateway
 from skillhub.llm._models import LlmGateway, LlmMessage, LlmRequest, LlmResult, LlmUsage
 
 __all__ = [
@@ -24,5 +25,6 @@ __all__ = [
     "LlmRequest",
     "LlmResult",
     "LlmUsage",
+    "MeteredLlmGateway",
     "ProviderError",
 ]

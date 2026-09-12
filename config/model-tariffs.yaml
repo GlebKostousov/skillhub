@@ -1,0 +1,31 @@
+version: 1
+currency: USD
+unit: per_million_tokens
+effective_from: 2026-09-11
+source_url: https://api-docs.deepseek.com/quick_start/pricing
+verified_at: 2026-09-11
+models:
+  - model: deepseek-flash
+    max_tokens: 4096
+    timeout: 30
+    temperature: 0
+    peak:
+      cache_hit: "0.006"
+      cache_miss: "0.30"
+      output: "1.20"
+    off_peak:
+      cache_hit: "0.003"
+      cache_miss: "0.15"
+      output: "0.60"
+    peak_windows:
+      days:
+        - Monday
+        - Tuesday
+        - Wednesday
+        - Thursday
+        - Friday
+      intervals:
+        - start: "01:00"
+          end: "04:00"
+        - start: "06:00"
+          end: "10:00"

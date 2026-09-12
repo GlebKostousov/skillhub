@@ -8,10 +8,9 @@
 
 ## Очередь
 
-1. `E5` Стоимость и наблюдаемость — открыт параллельно, отдельный worktree.
-2. `E6` Защита и поставка — blocked by E1–E5.
+1. `E6` Защита и поставка — blocked by E1–E5.
 
-Закрытое: `E1`, `E2`, `E3`, `E4` — `docs/phases/done-registry.md`.
+Закрытое: `E1`, `E2`, `E3`, `E4`, `E5` — `docs/phases/done-registry.md`.
 
 ## Feature freeze
 
