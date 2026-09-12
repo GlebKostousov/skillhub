@@ -52,3 +52,11 @@ class SchemaVersionError(LedgerError):
 
     code = "unsupported_schema"
     public_message = "Версия журнала расходов не поддерживается."
+
+
+class DailyBudgetExceededError(SkillHubError):
+    """Описывает отказ начать вызов сверх дневного лимита."""
+
+    code = "daily_budget_exceeded"
+    status_code = 429
+    public_message = "Дневной лимит модельных расходов исчерпан"

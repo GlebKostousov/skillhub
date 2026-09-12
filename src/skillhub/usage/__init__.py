@@ -5,6 +5,7 @@
 
 from skillhub.usage._bind import bind_call, bound_call
 from skillhub.usage._errors import (
+    DailyBudgetExceededError,
     InvalidCurrencyError,
     InvalidPriceError,
     LedgerError,
@@ -22,9 +23,10 @@ from skillhub.usage._models import (
     TokenCounts,
     UsageEvent,
 )
-from skillhub.usage._tariffs import calculate_cost, load_tariffs
+from skillhub.usage._tariffs import calculate_cost, calculate_reserve, load_tariffs
 
 __all__ = [
+    "DailyBudgetExceededError",
     "InvalidCurrencyError",
     "InvalidPriceError",
     "LedgerError",
@@ -42,6 +44,7 @@ __all__ = [
     "bind_call",
     "bound_call",
     "calculate_cost",
+    "calculate_reserve",
     "load_tariffs",
     "open_ledger",
 ]

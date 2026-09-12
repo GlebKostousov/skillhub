@@ -25,7 +25,7 @@ from skillhub.usage._models import (
     TariffSnapshot,
     TokenCounts,
 )
-from skillhub.usage._money import decimal_price, usage_nanos
+from skillhub.usage._money import decimal_price, reserve_nanos, usage_nanos
 
 _INVALID_MODEL = "model"
 _INVALID_WEEKDAY = "weekday"
@@ -178,6 +178,19 @@ def calculate_cost(tokens: TokenCounts, snapshot: TariffSnapshot) -> int:
             output=snapshot.output,
         ),
     )
+
+
+def calculate_reserve(input_tokens: int, tariff: ModelTariff) -> int:
+    """Считает worst-case резерв по пиковым ценам и max_tokens.
+
+    Args:
+        input_tokens: верхняя оценка входных токенов в code points.
+        tariff: тариф модели из каталога.
+
+    Returns:
+        Целые нано-USD после `ROUND_CEILING`.
+    """
+    return reserve_nanos(input_tokens, tariff.max_tokens, tariff.peak)
 
 
 def _load_mapping(path: Path) -> dict[object, object]:

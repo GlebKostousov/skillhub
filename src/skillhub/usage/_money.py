@@ -1,6 +1,6 @@
 """Переводит цены и токены в целые нано-USD."""
 
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import ROUND_CEILING, ROUND_HALF_EVEN, Decimal
 from typing import Final
 
 from skillhub.usage._errors import InvalidPriceError
@@ -45,6 +45,23 @@ def usage_nanos(tokens: TokenCounts, rates: RateCard) -> int:
         + _nanos_for(tokens.output, rates.output)
     )
     return int(nanos.quantize(_NANO_QUANTUM, rounding=ROUND_HALF_EVEN))
+
+
+def reserve_nanos(input_tokens: int, output_tokens: int, peak: RateCard) -> int:
+    """Считает worst-case резерв в нано-USD с округлением вверх.
+
+    Args:
+        input_tokens: верхняя оценка входных токенов.
+        output_tokens: верхняя граница выходных токенов.
+        peak: пиковые цены за миллион токенов.
+
+    Returns:
+        Целые нано-USD после одного `ROUND_CEILING`.
+    """
+    nanos = _nanos_for(input_tokens, peak.cache_miss) + _nanos_for(
+        output_tokens, peak.output
+    )
+    return int(nanos.quantize(_NANO_QUANTUM, rounding=ROUND_CEILING))
 
 
 def _decimal_from_config(value: object) -> Decimal:

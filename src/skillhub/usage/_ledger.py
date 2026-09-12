@@ -3,12 +3,16 @@
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Final
 
-from skillhub.usage._errors import LedgerError, SchemaVersionError
+from skillhub.usage._errors import (
+    DailyBudgetExceededError,
+    LedgerError,
+    SchemaVersionError,
+)
 from skillhub.usage._models import UsageEvent
 
 SCHEMA_VERSION: Final[int] = 1
@@ -63,7 +67,26 @@ SELECT
     tariff_source, tariff_verified_at,
     status, created_at
 FROM usage_events
+WHERE status = ?
 ORDER BY id
+"""
+_SUM_HELD = """
+SELECT COALESCE(SUM(cost_nanos), 0)
+FROM usage_events
+WHERE status IN ('reserved', 'committed')
+AND date(created_at) = ?
+"""
+_UPDATE_COMMIT = """
+UPDATE usage_events SET
+    prompt_tokens = ?, completion_tokens = ?, total_tokens = ?,
+    cache_hit = ?, cache_miss = ?, reasoning = ?,
+    cost_nanos = ?,
+    tariff_cache_hit = ?, tariff_cache_miss = ?, tariff_output = ?,
+    status = ?
+WHERE id = ? AND status = ?
+"""
+_UPDATE_RELEASE = """
+UPDATE usage_events SET status = ? WHERE id = ? AND status = ?
 """
 
 
@@ -88,6 +111,41 @@ class UsageLedger:
         with _connect(self._path) as connection:
             connection.execute(_INSERT_EVENT, _values(event))
 
+    def reserve(self, event: UsageEvent, daily_budget_nanos: int) -> int:
+        """Пишет reserved-строку, если дневной лимит ещё позволяет вызов.
+
+        Args:
+            event: worst-case оценка без пользовательского текста.
+            daily_budget_nanos: дневной потолок в нано-USD.
+
+        Returns:
+            Идентификатор зарезервированной строки.
+
+        Raises:
+            DailyBudgetExceededError: резерв не помещается в оставшийся лимит.
+        """
+        with _immediate(self._path) as connection:
+            return _insert_reserved(connection, event, daily_budget_nanos)
+
+    def commit(self, reservation_id: int, event: UsageEvent) -> None:
+        """Заменяет reserved-строку фактическими токенами и ценой.
+
+        Args:
+            reservation_id: идентификатор ранее записанного резерва.
+            event: фактическая committed-строка без пользовательского текста.
+        """
+        with _connect(self._path) as connection:
+            _apply_commit(connection, reservation_id, event)
+
+    def release(self, reservation_id: int) -> None:
+        """Возвращает зарезервированный лимит после отказа поставщика.
+
+        Args:
+            reservation_id: идентификатор ранее записанного резерва.
+        """
+        with _connect(self._path) as connection:
+            _apply_release(connection, reservation_id)
+
     def list(self) -> tuple[UsageEvent, ...]:
         """Возвращает committed-строки в порядке записи.
 
@@ -95,7 +153,7 @@ class UsageLedger:
             Неизменяемая последовательность событий этого файла.
         """
         with _connect(self._path) as connection:
-            rows = connection.execute(_SELECT_EVENTS).fetchall()
+            rows = connection.execute(_SELECT_EVENTS, ("committed",)).fetchall()
         return tuple(_event_from(row) for row in rows)
 
 
@@ -159,6 +217,89 @@ def _create_v1(connection: sqlite3.Connection) -> None:
     connection.execute(_CREATE_EVENTS)
 
 
+def _insert_reserved(
+    connection: sqlite3.Connection,
+    event: UsageEvent,
+    daily_budget_nanos: int,
+) -> int:
+    _reject_over_budget(connection, event, daily_budget_nanos)
+    cursor = connection.execute(_INSERT_EVENT, _values(event))
+    return _row_id(cursor)
+
+
+def _reject_over_budget(
+    connection: sqlite3.Connection,
+    event: UsageEvent,
+    daily_budget_nanos: int,
+) -> None:
+    held = _held_nanos(connection, _utc_day(event.created_at))
+    if held + event.cost_nanos > daily_budget_nanos:
+        raise DailyBudgetExceededError
+
+
+def _held_nanos(connection: sqlite3.Connection, day: str) -> int:
+    row = connection.execute(_SUM_HELD, (day,)).fetchone()
+    if row is None:
+        return 0
+    return _as_int(row[0])
+
+
+def _utc_day(at: datetime) -> str:
+    if at.tzinfo is None:
+        return at.date().isoformat()
+    return at.astimezone(UTC).date().isoformat()
+
+
+def _row_id(cursor: sqlite3.Cursor) -> int:
+    row_id = cursor.lastrowid
+    if row_id is None:
+        raise LedgerError
+    return row_id
+
+
+def _apply_commit(
+    connection: sqlite3.Connection,
+    reservation_id: int,
+    event: UsageEvent,
+) -> None:
+    cursor = connection.execute(
+        _UPDATE_COMMIT,
+        _commit_values(event, reservation_id),
+    )
+    _require_updated(cursor)
+
+
+def _apply_release(connection: sqlite3.Connection, reservation_id: int) -> None:
+    cursor = connection.execute(
+        _UPDATE_RELEASE,
+        ("released", reservation_id, "reserved"),
+    )
+    _require_updated(cursor)
+
+
+def _commit_values(event: UsageEvent, reservation_id: int) -> tuple[object, ...]:
+    return (
+        event.prompt_tokens,
+        event.completion_tokens,
+        event.total_tokens,
+        event.cache_hit,
+        event.cache_miss,
+        event.reasoning,
+        event.cost_nanos,
+        str(event.tariff_cache_hit),
+        str(event.tariff_cache_miss),
+        str(event.tariff_output),
+        "committed",
+        reservation_id,
+        "reserved",
+    )
+
+
+def _require_updated(cursor: sqlite3.Cursor) -> None:
+    if cursor.rowcount != 1:
+        raise LedgerError
+
+
 @contextmanager
 def _connect(path: Path) -> Iterator[sqlite3.Connection]:
     try:
@@ -170,6 +311,36 @@ def _connect(path: Path) -> Iterator[sqlite3.Connection]:
             yield connection
     finally:
         connection.close()
+
+
+@contextmanager
+def _immediate(path: Path) -> Iterator[sqlite3.Connection]:
+    connection = _open_autocommit(path)
+    try:
+        with _write_lock(connection):
+            yield connection
+    finally:
+        connection.close()
+
+
+def _open_autocommit(path: Path) -> sqlite3.Connection:
+    try:
+        connection = sqlite3.connect(path, timeout=30.0)
+    except sqlite3.Error:
+        raise LedgerError from None
+    connection.isolation_level = None
+    return connection
+
+
+@contextmanager
+def _write_lock(connection: sqlite3.Connection) -> Iterator[None]:
+    connection.execute("BEGIN IMMEDIATE")
+    try:
+        yield
+    except BaseException:
+        connection.rollback()
+        raise
+    connection.commit()
 
 
 def _values(event: UsageEvent) -> tuple[object, ...]:
