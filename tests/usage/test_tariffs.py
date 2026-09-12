@@ -1,5 +1,6 @@
 """Проверяет публичный фасад тарифов моделей."""
 
+import locale
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -26,6 +27,13 @@ _README = _REPOSITORY_ROOT / "README.md"
 _SOURCE_URL = "https://api-docs.deepseek.com/quick_start/pricing"
 _VERIFIED_AT = "2026-09-11"
 _SECRET_KEYS = frozenset({"api_key", "token", "password"})
+_NON_ENGLISH_TIME_LOCALES = (
+    "ru_RU.UTF-8",
+    "Russian_Russia.1251",
+    "Russian_Russia",
+    "ru_RU",
+    "Russian",
+)
 
 
 def test_valid_yaml_loads_deepseek_flash_limits_and_prices() -> None:
@@ -264,6 +272,20 @@ def test_peak_windows_select_monday_utc_prices() -> None:
     assert calculate_cost(tokens, weekend) == 150_000_000
 
 
+def test_peak_snapshot_uses_english_weekdays_under_foreign_locale() -> None:
+    """Проверяет пиковые цены UTC при неанглийской локали процесса."""
+    catalog = load_tariffs(_TARIFF_PATH)
+    peak_at = datetime(2026, 9, 14, 2, 0, tzinfo=UTC)
+    previous = locale.setlocale(locale.LC_TIME)
+    try:
+        _activate_non_english_time_locale(peak_at)
+        snapshot = catalog.snapshot("deepseek-flash", peak_at)
+    finally:
+        locale.setlocale(locale.LC_TIME, previous)
+
+    assert snapshot.cache_miss == Decimal("0.30")
+
+
 def _committed_text() -> str:
     """Возвращает текст зафиксированного файла тарифов."""
     return _TARIFF_PATH.read_text(encoding="utf-8")
@@ -317,3 +339,31 @@ def _assert_sequence_has_no_secrets(payload: object) -> None:
         return
     for item in payload:
         _assert_no_secret_keys(item)
+
+
+def _activate_non_english_time_locale(sample: datetime) -> None:
+    """Включает локаль, в которой имя дня не английское.
+
+    Args:
+        sample: момент, по которому проверяется имя дня.
+    """
+    for name in _NON_ENGLISH_TIME_LOCALES:
+        if _switched_time_locale(name, sample):
+            return
+
+
+def _switched_time_locale(name: str, sample: datetime) -> bool:
+    """Пробует одну локаль времени и проверяет имя дня.
+
+    Args:
+        name: кандидат `setlocale`.
+        sample: момент, по которому читается `%A`.
+
+    Returns:
+        Признак, что локаль сменила английское имя дня.
+    """
+    try:
+        locale.setlocale(locale.LC_TIME, name)
+    except locale.Error:
+        return False
+    return sample.strftime("%A") != "Monday"

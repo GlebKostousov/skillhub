@@ -7,6 +7,16 @@ from decimal import Decimal
 
 from skillhub.usage._errors import UnknownModelError
 
+_WEEKDAY_NAMES = (
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class RateCard:
@@ -176,7 +186,7 @@ def _rates_at(tariff: ModelTariff, at: datetime) -> RateCard:
 
 def _is_peak(schedule: PeakSchedule, at: datetime) -> bool:
     moment = _as_utc(at)
-    if moment.strftime("%A") not in schedule.days:
+    if _WEEKDAY_NAMES[moment.weekday()] not in schedule.days:
         return False
     return _in_intervals(moment.timetz().replace(tzinfo=None), schedule.intervals)
 
