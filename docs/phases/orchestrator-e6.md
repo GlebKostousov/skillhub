@@ -111,6 +111,7 @@ verify_profile:
 2. `E6-S2` — adversarial корпус; capsule `docs/phases/capsules/e6-s2.md`.
 3. `E6-S3` — CI и Docker; capsule `docs/phases/capsules/e6-s3.md`.
 4. `E6-S4` — демонстрация и документы защиты; capsule `docs/phases/capsules/e6-s4.md`.
+5. `E6-S5` — format-lock пяти файлов для зелёного `ruff format --check`; разблокирует UR-E6-S3-01.
 
 ## Правило движения
 
