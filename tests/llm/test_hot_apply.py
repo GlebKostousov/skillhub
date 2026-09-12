@@ -5,9 +5,19 @@ from pathlib import Path
 
 import httpx
 import pytest
+import yaml
 
-from skillhub.llm import DEEPSEEK_API_URL, DeepSeekLlmGateway, LlmMessage, LlmRequest
-from skillhub.runtime import RuntimeStore
+from skillhub.llm import (
+    DEEPSEEK_API_URL,
+    DeepSeekLlmGateway,
+    LlmGateway,
+    LlmMessage,
+    LlmRequest,
+    LlmResult,
+    MeteredLlmGateway,
+)
+from skillhub.runtime import OverlayValues, RuntimeStore
+from skillhub.usage import load_tariffs, open_ledger
 
 _PROVIDER_VALUE = "sk-test-hot-apply-provider-6418"
 _PROMPT = "Суммируй закрытый текст пользователя."
@@ -120,6 +130,118 @@ def test_thinking_enabled_omits_field_from_body(
     assert "thinking" not in payload
     assert payload["stream"] is False
     assert str(seen[0].url) == DEEPSEEK_API_URL
+
+
+def test_save_after_reserve_cannot_change_in_flight_body(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Проверяет, что save() между reserve и post не меняет тело запроса."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", _PROVIDER_VALUE)
+    seen: list[dict[str, object]] = []
+    store = RuntimeStore(_LIMITS)
+    store.save(_payload(max_tokens=2048))
+    deepseek = DeepSeekLlmGateway(client=_client(seen), store=store)
+    gateway = MeteredLlmGateway(
+        _SaveThenDeepSeek(store, deepseek),
+        open_ledger(tmp_path / "usage.sqlite3"),
+        load_tariffs(_write_tariff(tmp_path)),
+        store=store,
+    )
+
+    gateway.complete(_request())
+
+    assert seen[0]["model"] == "deepseek-flash"
+    assert seen[0]["max_tokens"] == 2048
+    assert store.snapshot().values.max_tokens == 1
+
+
+def test_provider_max_tokens_matches_tariff_clamp(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Проверяет, что тело шлёт тот же потолок max_tokens, что и reserve."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", _PROVIDER_VALUE)
+    seen: list[dict[str, object]] = []
+    catalog = load_tariffs(_write_tariff(tmp_path, max_tokens=4096))
+    store = RuntimeStore({"deepseek-flash": 4096})
+    gateway = MeteredLlmGateway(
+        DeepSeekLlmGateway(client=_client(seen), store=store),
+        open_ledger(tmp_path / "usage.sqlite3"),
+        catalog,
+        store=store,
+    )
+
+    gateway.complete(_request())
+
+    assert store.snapshot().values.max_tokens == 16384
+    assert seen[0]["max_tokens"] == 4096
+
+
+class _SaveThenDeepSeek(LlmGateway):
+    """Пишет overlay после reserve и проксирует вызов DeepSeek."""
+
+    def __init__(self, store: RuntimeStore, inner: DeepSeekLlmGateway) -> None:
+        self._store = store
+        self._inner = inner
+
+    def complete(self, request: LlmRequest) -> LlmResult:
+        """Меняет overlay и вызывает повторный снимок внутреннего шлюза."""
+        self._store.save(_payload(max_tokens=1))
+        return self._inner.complete(request)
+
+    def complete_with_values(
+        self,
+        request: LlmRequest,
+        values: OverlayValues,
+    ) -> LlmResult:
+        """Меняет overlay и отдаёт тот же снимок во внутренний шлюз."""
+        self._store.save(_payload(max_tokens=1))
+        return self._inner.complete_with_values(request, values)
+
+
+def _write_tariff(tmp_path: Path, *, max_tokens: int = 4096) -> Path:
+    """Пишет тариф deepseek-flash с заданным потолком max_tokens."""
+    path = tmp_path / "model-tariffs.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "version": 1,
+                "currency": "USD",
+                "unit": "per_million_tokens",
+                "effective_from": "2026-09-11",
+                "source_url": "https://api-docs.deepseek.com/quick_start/pricing",
+                "verified_at": "2026-09-11",
+                "models": [
+                    {
+                        "model": "deepseek-flash",
+                        "max_tokens": max_tokens,
+                        "timeout": 30,
+                        "temperature": 0,
+                        "peak": {
+                            "cache_hit": "0.006",
+                            "cache_miss": "0.30",
+                            "output": "1.20",
+                        },
+                        "off_peak": {
+                            "cache_hit": "0.006",
+                            "cache_miss": "0.30",
+                            "output": "1.20",
+                        },
+                        "peak_windows": {
+                            "days": ["Monday"],
+                            "intervals": [{"start": "01:00", "end": "04:00"}],
+                        },
+                    }
+                ],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    return path
 
 
 def _success(_request: httpx.Request) -> httpx.Response:

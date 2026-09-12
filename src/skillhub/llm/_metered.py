@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
+from typing import cast
 
 from structlog.contextvars import get_contextvars
 
@@ -61,7 +62,8 @@ class MeteredLlmGateway(LlmGateway):
         Returns:
             Успешный результат внутреннего шлюза.
         """
-        values = _snapshot_values(self._store)
+        catalog = _resolve(self._catalog)
+        values = _clamped_values(_snapshot_values(self._store), catalog)
         reservation = self._try_reserve(request, values)
         return self._finish(request, reservation, values)
 
@@ -83,7 +85,7 @@ class MeteredLlmGateway(LlmGateway):
         values: OverlayValues | None,
     ) -> LlmResult:
         try:
-            result = self._inner.complete(request)
+            result = _invoke(self._inner, request, values)
         except Exception:
             self._release(reservation)
             raise
@@ -130,12 +132,37 @@ def _resolve(source: TariffSource) -> TariffCatalog:
     return source()
 
 
+def _invoke(
+    inner: LlmGateway,
+    request: LlmRequest,
+    values: OverlayValues | None,
+) -> LlmResult:
+    hook = getattr(inner, "complete_with_values", None)
+    if values is not None and callable(hook):
+        typed = cast("Callable[[LlmRequest, OverlayValues], LlmResult]", hook)
+        return typed(request, values)
+    return inner.complete(request)
+
+
 def _snapshot_values(store: SnapshotSource | None) -> OverlayValues | None:
     if store is None:
         return None
     if isinstance(store, RuntimeStore):
         return store.snapshot().values
     return store()
+
+
+def _clamped_values(
+    values: OverlayValues | None,
+    catalog: TariffCatalog,
+) -> OverlayValues | None:
+    if values is None:
+        return None
+    tariff = catalog.model(values.model)
+    ceiling = min(values.max_tokens, tariff.max_tokens)
+    if ceiling == values.max_tokens:
+        return values
+    return replace(values, max_tokens=ceiling)
 
 
 def _budget(values: OverlayValues | None, fallback: int | None) -> int | None:

@@ -46,9 +46,24 @@ class DeepSeekLlmGateway(LlmGateway):
         Returns:
             Успешный результат с текстом, причиной и usage.
         """
+        return self.complete_with_values(request, _snapshot_values(self._store))
+
+    def complete_with_values(
+        self,
+        request: LlmRequest,
+        values: OverlayValues,
+    ) -> LlmResult:
+        """Выполняет вызов по уже замороженным значениям снимка.
+
+        Args:
+            request: типизированный запрос без пользовательского URL.
+            values: снимок, общий с резервом и записью расхода.
+
+        Returns:
+            Успешный результат с текстом, причиной и usage.
+        """
         _reject_user_url(request)
         api_key = _resolve_api_key()
-        values = _snapshot_values(self._store)
         return _complete_once(self._client, api_key, request, values)
 
 
