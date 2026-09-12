@@ -1,4 +1,4 @@
-"""Определяет типизированную ошибку разбора структуры протокола."""
+"""Определяет типизированные ошибки разбора и генерации протокола."""
 
 from typing import NoReturn
 
@@ -30,6 +30,14 @@ class ProtocolParseError(SkillHubError):
         self.expected = expected
         self.got = got
         super().__init__()
+
+
+class ProtocolGenerationError(SkillHubError):
+    """Описывает отказ принять незавершённый ответ порта генерации."""
+
+    code = "protocol_generation_error"
+    status_code = 422
+    public_message = "Ответ генерации протокола не завершён."
 
 
 def reject(line: int, expected: str, got: str) -> NoReturn:
