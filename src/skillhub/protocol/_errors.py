@@ -64,6 +64,14 @@ class ExtraClarificationFieldError(SkillHubError):
     public_message = "Решение содержит недопустимое поле."
 
 
+class InvalidClarificationAnswerError(SkillHubError):
+    """Описывает отказ ответа, который нельзя записать в поле задачи."""
+
+    code = "invalid_clarification_answer"
+    status_code = 422
+    public_message = "Ответ на уточнение содержит недопустимые символы."
+
+
 class UnresolvedClarificationError(SkillHubError):
     """Описывает отказ полного применения при незакрытом уточнении."""
 

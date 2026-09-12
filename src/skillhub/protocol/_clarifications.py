@@ -3,10 +3,13 @@
 
 from collections.abc import Iterator, Mapping, Sequence
 
+from pydantic import ValidationError
+
 from skillhub.protocol._constants import MAX_CLARIFICATIONS, PLACEHOLDER
 from skillhub.protocol._errors import (
     EmptyClarificationAnswerError,
     ExtraClarificationFieldError,
+    InvalidClarificationAnswerError,
     UnknownClarificationIdError,
     UnresolvedClarificationError,
 )
@@ -56,6 +59,7 @@ def apply_answers(
     Raises:
         EmptyClarificationAnswerError: ответ пустой или пробельный.
         ExtraClarificationFieldError: решение содержит лишнее поле.
+        InvalidClarificationAnswerError: ответ нельзя записать в поле задачи.
         UnknownClarificationIdError: идентификатор не входит в список.
         UnresolvedClarificationError: при полном применении остался пропуск.
     """
@@ -144,7 +148,10 @@ def _write_field(protocol: Protocol, identifier: str, value: str) -> Protocol:
     index = int(index_text)
     payload = tasks[index].model_dump()
     payload[field] = value
-    tasks[index] = ProtocolTask.model_validate(payload)
+    try:
+        tasks[index] = ProtocolTask.model_validate(payload)
+    except ValidationError:
+        raise InvalidClarificationAnswerError from None
     return protocol.model_copy(update={"tasks": tuple(tasks)})
 
 

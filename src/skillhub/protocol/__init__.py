@@ -16,6 +16,7 @@ from skillhub.protocol._draft import (
 from skillhub.protocol._errors import (
     EmptyClarificationAnswerError,
     ExtraClarificationFieldError,
+    InvalidClarificationAnswerError,
     ProtocolGenerationError,
     ProtocolParseError,
     UnknownClarificationIdError,
@@ -35,6 +36,7 @@ __all__ = [
     "EmptyClarificationAnswerError",
     "ExtraClarificationFieldError",
     "GeneratedDraft",
+    "InvalidClarificationAnswerError",
     "Protocol",
     "ProtocolGenerationError",
     "ProtocolParseError",

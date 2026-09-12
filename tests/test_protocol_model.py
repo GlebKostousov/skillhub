@@ -14,6 +14,7 @@ from skillhub.protocol import (
     Clarification,
     EmptyClarificationAnswerError,
     ExtraClarificationFieldError,
+    InvalidClarificationAnswerError,
     Protocol,
     ProtocolParseError,
     ProtocolTask,
@@ -210,6 +211,7 @@ def test_facade_exports_clarification_seam() -> None:
         (EmptyClarificationAnswerError, "empty_clarification_answer", 422),
         (UnknownClarificationIdError, "unknown_clarification_id", 422),
         (ExtraClarificationFieldError, "extra_clarification_field", 422),
+        (InvalidClarificationAnswerError, "invalid_clarification_answer", 422),
         (UnresolvedClarificationError, "unresolved_clarification", 409),
     ],
 )

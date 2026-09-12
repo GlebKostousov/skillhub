@@ -14,6 +14,7 @@ from skillhub.protocol import (
     Clarification,
     EmptyClarificationAnswerError,
     ExtraClarificationFieldError,
+    InvalidClarificationAnswerError,
     Protocol,
     ProtocolTask,
     UnknownClarificationIdError,
@@ -302,12 +303,20 @@ def test_extra_field_write_is_rejected() -> None:
 def test_pipe_in_task_answer_is_rejected_by_task_validator() -> None:
     """Проверяет отказ вертикальной черты в ответе ответственного."""
     protocol = _protocol(tasks=(_task(assignee=PLACEHOLDER),))
+    raw_answer = "Анна|Борис"
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(InvalidClarificationAnswerError) as caught:
         apply_answers(
             protocol,
-            ({"id": "task:0:assignee", "action": "answer", "value": "Анна|Борис"},),
+            ({"id": "task:0:assignee", "action": "answer", "value": raw_answer},),
         )
+
+    assert isinstance(caught.value, SkillHubError)
+    assert "|" not in caught.value.public_message
+    assert raw_answer not in caught.value.public_message
+    assert "|" not in str(caught.value)
+    assert raw_answer not in str(caught.value)
+    assert apply_answers(protocol, ()) == protocol
 
 
 def test_clarification_model_forbids_extra_and_is_frozen() -> None:
