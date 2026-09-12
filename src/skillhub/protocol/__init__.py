@@ -23,6 +23,7 @@ from skillhub.protocol._errors import (
     UnresolvedClarificationError,
     VerifyMaterialTooLargeError,
 )
+from skillhub.protocol._finalize import FinalizedProtocol, finalize
 from skillhub.protocol._parser import parse
 from skillhub.protocol._renderer import render
 from skillhub.protocol._verify import MAX_VERIFY_CHARS, UnconfirmedClaim, verify
@@ -38,6 +39,7 @@ __all__ = [
     "Clarification",
     "EmptyClarificationAnswerError",
     "ExtraClarificationFieldError",
+    "FinalizedProtocol",
     "GeneratedDraft",
     "InvalidClarificationAnswerError",
     "Protocol",
@@ -52,6 +54,7 @@ __all__ = [
     "apply_answers",
     "build_clarifications",
     "create_draft",
+    "finalize",
     "parse",
     "render",
     "verify",
