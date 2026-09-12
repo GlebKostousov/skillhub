@@ -6,9 +6,12 @@ const markdownArea = document.querySelector("#protocol-markdown");
 const draftButton = document.querySelector("#protocol-draft-button");
 const downloadButton = document.querySelector("#protocol-download-button");
 const clarificationsButton = document.querySelector("#protocol-clarifications-button");
+const finalizeButton = document.querySelector("#protocol-finalize-button");
 const clarificationsWrap = document.querySelector("#protocol-clarifications-wrap");
 const clarificationsEmpty = document.querySelector("#protocol-clarifications-empty");
 const clarificationsBody = document.querySelector("#protocol-clarifications-body");
+const unconfirmedNode = document.querySelector("#protocol-unconfirmed");
+const unconfirmedList = document.querySelector("#protocol-unconfirmed-list");
 const statusNode = document.querySelector("#protocol-status");
 const errorNode = document.querySelector("#protocol-error");
 const errorMessageNode = document.querySelector("#protocol-error-message");
@@ -44,6 +47,12 @@ if (downloadButton instanceof HTMLButtonElement) {
 if (clarificationsButton instanceof HTMLButtonElement) {
   clarificationsButton.addEventListener("click", () => {
     void submitClarifications();
+  });
+}
+
+if (finalizeButton instanceof HTMLButtonElement) {
+  finalizeButton.addEventListener("click", () => {
+    void submitFinalize();
   });
 }
 
@@ -104,10 +113,81 @@ function setBusy(busy, status) {
   if (clarificationsButton instanceof HTMLButtonElement) {
     clarificationsButton.disabled = busy;
   }
+  if (finalizeButton instanceof HTMLButtonElement) {
+    finalizeButton.disabled = busy;
+  }
   applyRowBusy(busy);
   if (typeof status === "string") {
     setText(statusNode, status);
   }
+}
+
+async function submitFinalize() {
+  clearMessages();
+  setBusy(true, "Формируется итоговый протокол…");
+  try {
+    const response = await postJson("/protocol/finalize", {
+      csrf_token: csrfValue(),
+      text: tableLoaded ? baseText : fieldValue(markdownArea),
+      answers: finalizeAnswers(),
+      material: fieldValue(transcriptArea),
+    });
+    const payload = await readJson(response);
+    if (!response.ok) {
+      showError(payload);
+      return;
+    }
+    writeMarkdown(payload);
+    showUnconfirmed(asUnconfirmed(payload));
+    setText(statusNode, "Итоговый протокол сформирован.");
+  } catch {
+    showConnectionError();
+  } finally {
+    setBusy(false);
+  }
+}
+
+function finalizeAnswers() {
+  const answers = [];
+  for (const decision of remainingDecisions()) {
+    const item = {
+      id: decision.item.id,
+      action: decision.status === "skipped" ? "skip" : "answer",
+    };
+    if (decision.status === "answered") {
+      item.value = decision.value;
+    }
+    answers.push(item);
+  }
+  return answers;
+}
+
+function asUnconfirmed(payload) {
+  if (!payload || !Array.isArray(payload.unconfirmed)) {
+    return [];
+  }
+  const items = [];
+  for (const item of payload.unconfirmed) {
+    if (item && typeof item.target === "string" && typeof item.reason === "string") {
+      items.push(item);
+    }
+  }
+  return items;
+}
+
+function showUnconfirmed(items) {
+  if (!(unconfirmedList instanceof HTMLElement)) {
+    return;
+  }
+  while (unconfirmedList.firstChild) {
+    unconfirmedList.removeChild(unconfirmedList.firstChild);
+  }
+  for (const item of items) {
+    const entry = document.createElement("li");
+    entry.textContent = `${item.target}: ${item.reason}`;
+    unconfirmedList.appendChild(entry);
+  }
+  toggleHidden(unconfirmedNode, items.length === 0);
 }
 
 async function submitClarifications() {
@@ -644,4 +724,5 @@ function clearMessages() {
   if (errorNode instanceof HTMLElement) {
     errorNode.classList.add("d-none");
   }
+  toggleHidden(unconfirmedNode, true);
 }

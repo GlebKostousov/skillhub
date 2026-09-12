@@ -65,6 +65,13 @@
       <button class="btn btn-outline-primary mb-3" type="button" id="protocol-clarifications-button">
         Показать уточнения
       </button>
+      <button class="btn btn-primary mb-3" type="button" id="protocol-finalize-button">
+        Сформировать итоговый протокол
+      </button>
+      <div id="protocol-unconfirmed" class="alert alert-warning d-none" role="status">
+        <p class="mb-2">Материал не подтвердил часть утверждений.</p>
+        <ul id="protocol-unconfirmed-list" class="mb-0"></ul>
+      </div>
       <p id="protocol-clarifications-empty" class="d-none" role="status">
         Важных пропусков нет.
       </p>

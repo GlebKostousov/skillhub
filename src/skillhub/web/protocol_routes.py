@@ -15,6 +15,7 @@ from skillhub.core import SkillHubError
 from skillhub.docx_export import build_docx
 from skillhub.protocol import (
     Clarification,
+    FinalizedProtocol,
     Protocol,
     ProtocolParseError,
     ProtocolTextGenerator,
@@ -23,6 +24,9 @@ from skillhub.protocol import (
     create_draft,
     parse,
     render,
+)
+from skillhub.protocol import (
+    finalize as finalize_protocol,
 )
 from skillhub.web._reload_guard import validate_csrf_token
 from skillhub.web.errors import RequestTooLargeError, UnsupportedFormError
@@ -137,6 +141,19 @@ class _ProtocolRoutes:
         content["text"] = rebuilt
         return JSONResponse(content=content)
 
+    async def finalize(self, request: Request) -> Response:
+        """Собирает итоговый протокол из закрытых уточнений и материала."""
+        payload = await self._read_json(request)
+        text = _string_field(payload, "text")
+        material = _string_field(payload, "material")
+        answers = _answers_field(payload)
+        try:
+            protocol = parse(text)
+        except ProtocolParseError as exc:
+            return _parse_error_response(exc)
+        result = finalize_protocol(protocol, answers, material)
+        return JSONResponse(content=_finalize_payload(result))
+
     def _require_generator(self) -> ProtocolTextGenerator:
         if self._generator is None:
             raise GenerationUnavailableError
@@ -201,6 +218,12 @@ def create_protocol_router(
     router.add_api_route(
         "/protocol/answer",
         routes.answer,
+        methods=["POST"],
+        response_model=None,
+    )
+    router.add_api_route(
+        "/protocol/finalize",
+        routes.finalize,
         methods=["POST"],
         response_model=None,
     )
@@ -365,6 +388,29 @@ def _decision(payload: dict[str, object]) -> dict[str, object]:
     if "value" in payload:
         decision["value"] = payload["value"]
     return decision
+
+
+def _answers_field(payload: dict[str, object]) -> list[dict[str, object]]:
+    raw = payload.get("answers")
+    if not isinstance(raw, list):
+        raise ProtocolInvalidRequestError
+    return [_require_decision_mapping(item) for item in raw]
+
+
+def _require_decision_mapping(item: object) -> dict[str, object]:
+    if not isinstance(item, dict):
+        raise ProtocolInvalidRequestError
+    return cast("dict[str, object]", item)
+
+
+def _finalize_payload(result: FinalizedProtocol) -> dict[str, object]:
+    return {
+        "text": render(result.protocol),
+        "unconfirmed": [
+            {"target": item.target, "reason": item.reason}
+            for item in result.unconfirmed
+        ],
+    }
 
 
 def _clarifications_payload(protocol: Protocol) -> dict[str, object]:
