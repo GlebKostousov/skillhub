@@ -69,7 +69,7 @@ class _SettingsRoutes:
             request: недоверенный JSON-запрос сохранения настроек.
         """
         values = await validate_settings_request(request, self._csrf_token)
-        self._store.save(values)
+        self._store.save(_coerce_json_float_fields(values))
         return _settings_report(self._store.snapshot())
 
 
@@ -109,6 +109,26 @@ def create_settings_router(
         include_in_schema=False,
     )
     return router
+
+
+_JSON_FLOAT_FIELDS = ("timeout", "top_p")
+
+
+def _coerce_json_float_fields(values: dict[str, object]) -> dict[str, object]:
+    """Приводит JSON-целые timeout и top_p к float перед записью.
+
+    Args:
+        values: полный набор значений из проверенного JSON-тела.
+
+    Returns:
+        Копия набора, где целые timeout и top_p приведены к float.
+    """
+    coerced = dict(values)
+    for name in _JSON_FLOAT_FIELDS:
+        value = coerced.get(name)
+        if type(value) is int:
+            coerced[name] = float(value)
+    return coerced
 
 
 def _settings_report(snapshot: RuntimeSnapshot) -> SettingsReport:

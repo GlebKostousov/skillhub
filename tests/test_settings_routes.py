@@ -1,5 +1,6 @@
 """Проверяет страницу настроек, JSON-снимок и полную замену наложения."""
 
+import json
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -125,6 +126,38 @@ def test_settings_post_then_get_reflects_store(client: TestClient) -> None:
     assert store.snapshot().values.temperature == 0.5
     assert store.snapshot().values.max_tokens == ceiling
     assert "0.5" in page.text
+
+
+def test_settings_post_accepts_json_integer_timeout_and_top_p(
+    client: TestClient,
+) -> None:
+    """Проверяет сохранение timeout и top_p, сериализованных как JSON-целые."""
+    token = _csrf(client)
+    before = client.get("/api/settings").json()
+    values = _values_from(before)
+    ceiling = next(
+        field["max"] for field in before["fields"] if field["name"] == "max_tokens"
+    )
+    values["max_tokens"] = ceiling
+    values["temperature"] = 0.25
+    values["timeout"] = 60
+    values["top_p"] = 1
+    body = json.dumps({"csrf_token": token, "values": values})
+
+    response = client.post(
+        "/api/settings",
+        content=body,
+        headers={**_ORIGIN, "content-type": "application/json"},
+    )
+    store = client.app.state.runtime_store
+    snapshot = store.snapshot()
+
+    assert '"timeout": 60' in body
+    assert '"top_p": 1' in body
+    assert response.status_code == 200
+    assert snapshot.values.timeout == 60.0
+    assert snapshot.values.top_p == 1.0
+    assert snapshot.values.temperature == 0.25
 
 
 def test_settings_unknown_key_is_invalid_overlay(client: TestClient) -> None:
