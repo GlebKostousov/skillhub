@@ -1,6 +1,10 @@
 """Проверяет реестр обработчиков простых режимов."""
 
-from skillhub.assistant import PromptSkillHandler, SkillHandlerRegistry
+from skillhub.assistant import (
+    PromptSkillHandler,
+    ProtocolSkillHandler,
+    SkillHandlerRegistry,
+)
 from skillhub.llm import FakeLlmGateway, LlmResult, LlmUsage
 from skillhub.registry import Skill
 
@@ -34,11 +38,26 @@ def test_four_simple_names_resolve_to_prompt_handler() -> None:
         assert registry.resolve(name) is handler
 
 
-def test_meeting_protocol_is_absent_and_not_success() -> None:
-    """Проверяет, что meeting-protocol нет в реестре и это не успех."""
-    registry = SkillHandlerRegistry(_handler())
+def test_meeting_protocol_is_absent_until_extra_registered() -> None:
+    """Проверяет, что протокол появляется только как явный extra."""
+    simple = _handler()
+    protocol = ProtocolSkillHandler(
+        FakeLlmGateway(
+            result=LlmResult(
+                text="ок",
+                finish_reason="stop",
+                usage=LlmUsage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+            )
+        )
+    )
+    empty = SkillHandlerRegistry(simple)
+    filled = SkillHandlerRegistry(
+        simple,
+        extra={"meeting-protocol": protocol},
+    )
 
-    assert registry.resolve("meeting-protocol") is None
+    assert empty.resolve("meeting-protocol") is None
+    assert filled.resolve("meeting-protocol") is protocol
     skill = Skill(
         name="meeting-protocol",
         caption="Протокол встречи",
@@ -46,8 +65,8 @@ def test_meeting_protocol_is_absent_and_not_success() -> None:
         body="TRUSTED-BODY-meeting-protocol",
         has_files=True,
     )
-    resolved = registry.resolve(skill.name)
-    assert resolved is None
+    assert empty.resolve(skill.name) is None
+    assert filled.resolve(skill.name) is protocol
 
 
 def test_unknown_name_is_unavailable() -> None:

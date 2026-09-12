@@ -8,6 +8,7 @@ from skillhub.assistant import (
     Assistant,
     AssistantOutcome,
     PromptSkillHandler,
+    ProtocolSkillHandler,
     SkillHandlerRegistry,
 )
 from skillhub.classifier import SkillClassifier
@@ -79,7 +80,10 @@ def _assistant(
     generate_gateway = FakeLlmGateway(result=_result(generate_text))
     assistant = Assistant(
         SkillClassifier(classify_gateway),
-        SkillHandlerRegistry(PromptSkillHandler(generate_gateway)),
+        SkillHandlerRegistry(
+            PromptSkillHandler(generate_gateway),
+            extra={"meeting-protocol": ProtocolSkillHandler(generate_gateway)},
+        ),
     )
     return assistant, classify_gateway, generate_gateway
 
@@ -160,21 +164,52 @@ def test_none_does_not_generate() -> None:
     assert generate.requests == []
 
 
-def test_meeting_protocol_is_handler_unavailable_without_generate() -> None:
-    """Проверяет handler_unavailable без генерации и без Word."""
-    assistant, classify, generate = _assistant('{"skill": "meeting-protocol"}')
+def test_meeting_protocol_renders_parsed_draft() -> None:
+    """Проверяет разбор ответа модели в нормативный протокол."""
+    example = (
+        _REPOSITORY_ROOT / "skills" / "meeting-protocol" / "references" / "example.md"
+    ).read_text(encoding="utf-8")
+    assistant, classify, generate = _assistant(
+        '{"skill": "meeting-protocol"}',
+        generate_text=example,
+    )
     snapshot = _full_snapshot()
 
     outcome = assistant.run("Составь протокол совещания", _MATERIAL, snapshot)
 
-    assert outcome == AssistantOutcome(
-        selected_skill="meeting-protocol",
-        caption=snapshot["meeting-protocol"].caption,
-        outcome="handler_unavailable",
-        text=None,
-        message="Обработчик выбранного режима недоступен.",
+    assert outcome.outcome == "success"
+    assert outcome.selected_skill == "meeting-protocol"
+    assert outcome.caption == snapshot["meeting-protocol"].caption
+    assert outcome.text is not None
+    assert "## Задачи" in outcome.text
+    assert len(generate.requests) == 1
+    assert _MATERIAL in _sent_text(generate.requests[0])
+    assert _MATERIAL not in "".join(
+        _sent_text(request) for request in classify.requests
     )
-    assert generate.requests == []
+
+
+def test_meeting_protocol_instruction_includes_grammar_v1() -> None:
+    """Проверяет, что живой обработчик отдаёт модели грамматику v1 из тела скилла."""
+    example = (
+        _REPOSITORY_ROOT / "skills" / "meeting-protocol" / "references" / "example.md"
+    ).read_text(encoding="utf-8")
+    report = SkillRegistry(_SKILLS_ROOT).load()
+    snapshot = {skill.name: skill for skill in report.skills}
+    assistant, classify, generate = _assistant(
+        '{"skill": "meeting-protocol"}',
+        generate_text=example,
+    )
+
+    outcome = assistant.run("Составь протокол совещания", _MATERIAL, snapshot)
+
+    assert outcome.outcome == "success"
+    sent = _system_text(generate.requests[0])
+    assert snapshot["meeting-protocol"].body == sent
+    assert "Формат протокола v1" in sent
+    assert "## Обсуждение" in sent
+    assert "| Задача | Ответственный | Срок |" in sent
+    assert _MATERIAL in _sent_text(generate.requests[0])
     assert _MATERIAL not in "".join(
         _sent_text(request) for request in classify.requests
     )

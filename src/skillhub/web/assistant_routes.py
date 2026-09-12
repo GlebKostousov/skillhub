@@ -7,7 +7,12 @@ from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
 
-from skillhub.assistant import Assistant, PromptSkillHandler, SkillHandlerRegistry
+from skillhub.assistant import (
+    Assistant,
+    PromptSkillHandler,
+    ProtocolSkillHandler,
+    SkillHandlerRegistry,
+)
 from skillhub.classifier import SkillClassifier
 from skillhub.llm import LlmGateway
 from skillhub.registry import Skill, SkillRegistry
@@ -47,9 +52,13 @@ class _AssistantRoutes:
         """
         self._registry = registry
         self._csrf_token = csrf_token
+        protocol_handler = ProtocolSkillHandler(llm_gateway)
         self._assistant = Assistant(
             SkillClassifier(llm_gateway),
-            SkillHandlerRegistry(PromptSkillHandler(llm_gateway)),
+            SkillHandlerRegistry(
+                PromptSkillHandler(llm_gateway),
+                extra={"meeting-protocol": protocol_handler},
+            ),
         )
 
     async def create_turn(self, request: Request) -> AssistantResponse:

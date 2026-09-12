@@ -808,14 +808,14 @@ def test_unknown_root_issue_uses_human_fallback(
 
 
 def test_application_route_and_method_surface_is_unchanged() -> None:
-    """Фиксирует пять прикладных маршрутов после внутреннего рефакторинга."""
+    """Фиксирует прикладные маршруты каталога, ассистента и протокола."""
     app = create_app(skills_root=_SKILLS_ROOT)
     included_routers = [
         router
         for route in app.routes
         if isinstance((router := getattr(route, "original_router", None)), APIRouter)
     ]
-    assert len(included_routers) == 2
+    assert len(included_routers) == 3
     routes = {
         route.path: frozenset(route.methods or ())
         for router in included_routers
@@ -828,6 +828,9 @@ def test_application_route_and_method_surface_is_unchanged() -> None:
         "/api/assistant": frozenset({"POST"}),
         "/api/skills": frozenset({"GET"}),
         "/health": frozenset({"GET"}),
+        "/protocol": frozenset({"GET"}),
+        "/protocol/docx": frozenset({"POST"}),
+        "/protocol/draft": frozenset({"POST"}),
         "/skills": frozenset({"GET"}),
         "/skills/reload": frozenset({"POST"}),
     }
@@ -856,7 +859,11 @@ def test_local_javascript_avoids_known_html_execution_sinks() -> None:
     scripts = sorted(
         (_SKILLS_ROOT.parent / "src" / "skillhub" / "web" / "static").glob("*.js")
     )
-    assert [script.name for script in scripts] == ["app.js", "assistant.js"]
+    assert [script.name for script in scripts] == [
+        "app.js",
+        "assistant.js",
+        "protocol.js",
+    ]
     forbidden_sinks = [
         "innerHTML",
         "outerHTML",
@@ -866,8 +873,8 @@ def test_local_javascript_avoids_known_html_execution_sinks() -> None:
         "eval(",
         "new Function",
     ]
+    sources = [script.read_text(encoding="utf-8") for script in scripts]
 
-    for script in scripts:
-        source = script.read_text(encoding="utf-8")
+    for source in sources:
         assert "textContent" in source
         assert all(sink not in source for sink in forbidden_sinks)

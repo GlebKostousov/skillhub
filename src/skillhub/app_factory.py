@@ -17,6 +17,7 @@ from skillhub.web import (
     SecurityHeadersMiddleware,
     StrictHostMiddleware,
     TrustedHostEnvelopeMiddleware,
+    create_protocol_router,
     create_router,
     install_error_handlers,
 )
@@ -82,5 +83,12 @@ def create_app(
                 llm_gateway=gateway,
             )
         )
+    app.include_router(
+        create_protocol_router(
+            templates,
+            csrf_token=csrf_token,
+            generator=None,
+        )
+    )
     install_error_handlers(app)
     return app

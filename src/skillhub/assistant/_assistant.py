@@ -9,6 +9,7 @@ from skillhub.assistant._models import AssistantOutcome
 from skillhub.assistant._registry import SkillHandlerRegistry
 from skillhub.classifier import SkillClassifier, SkillMetadata
 from skillhub.llm import GenerationUnavailableError, ProviderError
+from skillhub.protocol import ProtocolGenerationError, ProtocolParseError
 from skillhub.registry import Skill
 
 _MESSAGE_SUCCESS = "Ответ готов."
@@ -102,6 +103,16 @@ def _run_handler(
         return _gateway_unavailable(skill.name, skill.caption)
     except ProviderError:
         return _gateway_provider(skill.name, skill.caption)
+    except (ProtocolGenerationError, ProtocolParseError) as error:
+        return _logged(
+            AssistantOutcome(
+                selected_skill=skill.name,
+                caption=skill.caption,
+                outcome="provider_error",
+                text=None,
+                message=error.public_message,
+            )
+        )
     return _logged(
         AssistantOutcome(
             selected_skill=skill.name,

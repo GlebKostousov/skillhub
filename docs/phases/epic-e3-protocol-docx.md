@@ -1,6 +1,6 @@
 # E3. Протокол встречи и Word
 
-Статус: не начат
+Статус: принят. As-built: модель `Protocol`, `parse`/`render`, `create_draft`, `build_docx`, HTTP `GET /protocol`, `POST /protocol/draft`, `POST /protocol/docx`. Обработчик `meeting-protocol` зарегистрирован в ассистенте.
 Вес: 8 единиц
 Зависит от: E1
 
