@@ -55,6 +55,10 @@ _GAP_MARKDOWN = _VALID_MARKDOWN.replace(
     "**Дата:** 2026-09-12",
     f"**Дата:** {PLACEHOLDER}",
 )
+_PARTICIPANTS_GAP_MARKDOWN = _VALID_MARKDOWN.replace(
+    "**Участники:** Анна",
+    f"**Участники:** {PLACEHOLDER}",
+)
 _CONFIRMED_MATERIAL = "После паузы решили включить показатели продаж."
 
 
@@ -492,6 +496,38 @@ def test_finalize_http_keeps_parse_error_envelope() -> None:
     assert response.status_code == 422
     assert error["code"] == "protocol_parse_error"
     assert set(error) == {"code", "message", "line", "expected", "got"}
+
+
+def test_finalize_newline_in_date_or_participants_keeps_parse_envelope() -> None:
+    """Проверяет оболочку разбора при переносе строки после применения ответа."""
+    client = TestClient(create_app())
+    token = _csrf(client)
+    cases = (
+        (
+            _GAP_MARKDOWN,
+            [{"id": "date", "action": "answer", "value": "2026-10-01\n## Подмена"}],
+        ),
+        (
+            _PARTICIPANTS_GAP_MARKDOWN,
+            [{"id": "participants", "action": "answer", "value": "Анна\n## Подмена"}],
+        ),
+    )
+
+    for text, answers in cases:
+        response = _post_finalize(
+            client,
+            token,
+            {
+                "text": text,
+                "answers": answers,
+                "material": _CONFIRMED_MATERIAL,
+            },
+        )
+        body = response.json()
+        assert response.status_code == 422
+        assert body["error"]["code"] == "protocol_parse_error"
+        assert set(body["error"]) == {"code", "message", "line", "expected", "got"}
+        assert "text" not in body
 
 
 class _CsrfParser(HTMLParser):

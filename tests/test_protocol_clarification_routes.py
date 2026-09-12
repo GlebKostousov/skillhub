@@ -278,6 +278,29 @@ def test_answer_parse_error_keeps_draft_envelope() -> None:
     assert set(error) == {"code", "message", "line", "expected", "got"}
 
 
+def test_answer_newline_in_date_or_participants_keeps_parse_envelope() -> None:
+    """Проверяет оболочку разбора при переносе строки в дате или участниках."""
+    client = TestClient(create_app())
+    token = _csrf(client)
+    cases = (
+        (_GAP_MARKDOWN, "date", "2026-10-01\n## Подмена"),
+        (_TWO_GAP_MARKDOWN, "participants", "Анна\n## Подмена"),
+    )
+
+    for text, identifier, value in cases:
+        response = _post_json(
+            client,
+            "/protocol/answer",
+            token,
+            {"text": text, "id": identifier, "action": "answer", "value": value},
+        )
+        body = response.json()
+        assert response.status_code == 422
+        assert body["error"]["code"] == "protocol_parse_error"
+        assert set(body["error"]) == {"code", "message", "line", "expected", "got"}
+        assert "text" not in body
+
+
 def _csrf(client: TestClient) -> str:
     """Читает CSRF-токен со страницы протокола.
 

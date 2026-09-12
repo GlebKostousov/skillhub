@@ -134,9 +134,9 @@ class _ProtocolRoutes:
         text = _string_field(payload, "text")
         try:
             rebuilt = rebuild_protocol_text(text, (_decision(payload),))
+            updated = parse(rebuilt)
         except ProtocolParseError as exc:
             return _parse_error_response(exc)
-        updated = parse(rebuilt)
         content = _clarifications_payload(updated)
         content["text"] = rebuilt
         return JSONResponse(content=content)
@@ -149,9 +149,9 @@ class _ProtocolRoutes:
         answers = _answers_field(payload)
         try:
             protocol = parse(text)
+            result = finalize_protocol(protocol, answers, material)
         except ProtocolParseError as exc:
             return _parse_error_response(exc)
-        result = finalize_protocol(protocol, answers, material)
         return JSONResponse(content=_finalize_payload(result))
 
     def _require_generator(self) -> ProtocolTextGenerator:
