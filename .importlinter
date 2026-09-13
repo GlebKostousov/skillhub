@@ -11,6 +11,7 @@ forbidden_modules =
     skillhub.web
     skillhub.llm
     skillhub.usage
+    skillhub.runtime
     skillhub.app_factory
     skillhub.main
 
@@ -52,6 +53,19 @@ forbidden_modules =
     skillhub.classifier
     skillhub.protocol
     skillhub.docx_export
+    skillhub.runtime
+
+[importlinter:contract:runtime-independence]
+name = Runtime does not import web, llm, usage or composition roots
+type = forbidden
+source_modules =
+    skillhub.runtime
+forbidden_modules =
+    skillhub.web
+    skillhub.llm
+    skillhub.usage
+    skillhub.app_factory
+    skillhub.main
 
 [importlinter:contract:docx-export-isolation]
 name = docx_export imports only the public Protocol model

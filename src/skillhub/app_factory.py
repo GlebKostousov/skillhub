@@ -12,6 +12,7 @@ from skillhub._server_logging import configure_server_logging
 from skillhub.core import Settings, configure_logging
 from skillhub.llm import DeepSeekLlmGateway, LlmGateway, MeteredLlmGateway
 from skillhub.registry import SkillRegistry
+from skillhub.runtime import RuntimeStore
 from skillhub.usage import UsageLedger, load_tariffs
 from skillhub.web import (
     LoggingLlmGateway,
@@ -21,6 +22,7 @@ from skillhub.web import (
     TrustedHostEnvelopeMiddleware,
     create_protocol_router,
     create_router,
+    create_settings_router,
     create_usage_router,
     install_error_handlers,
 )
@@ -51,11 +53,12 @@ def create_app(
     registry = SkillRegistry(skills_root or _DEFAULT_SKILLS_ROOT)
     registry.reload()
     csrf_token = secrets.token_urlsafe(32)
-    inner, gateway, ledger = _build_usage_gateway(llm_gateway, settings)
+    inner, gateway, ledger, store = _build_usage_gateway(llm_gateway, settings)
     app = FastAPI(title="SkillHub", debug=False)
     app.state.llm_gateway = gateway
     app.state.llm_transport = inner
     app.state.usage_ledger = ledger
+    app.state.runtime_store = store
     app.add_middleware(
         TrustedHostEnvelopeMiddleware,
         allowed_hosts=_ALLOWED_HOSTS,
@@ -101,7 +104,15 @@ def create_app(
         create_usage_router(
             templates,
             ledger=ledger,
-            daily_budget_nanos=settings.daily_budget_nanos,
+            store=store,
+        ),
+    )
+    _attach_usage_routes(
+        app,
+        create_settings_router(
+            templates,
+            csrf_token=csrf_token,
+            store=store,
         ),
     )
     install_error_handlers(app)
@@ -121,7 +132,7 @@ def _attach_usage_routes(app: FastAPI, router: APIRouter) -> None:
 def _build_usage_gateway(
     llm_gateway: LlmGateway | None,
     settings: Settings,
-) -> tuple[LlmGateway, LlmGateway, UsageLedger]:
+) -> tuple[LlmGateway, LlmGateway, UsageLedger, RuntimeStore]:
     """Оборачивает шлюз учётом лимита и диагностическим логом.
 
     Args:
@@ -129,15 +140,14 @@ def _build_usage_gateway(
         settings: проверенная конфигурация журнала и дневного потолка.
 
     Returns:
-        Внутренний шов, учётный шлюз и открытый журнал расходов.
+        Внутренний шов, учётный шлюз, журнал расходов и хранилище снимка.
     """
     ledger = UsageLedger(settings.usage_path)
     catalog = load_tariffs(_TARIFFS_PATH)
-    inner = llm_gateway if llm_gateway is not None else DeepSeekLlmGateway()
-    metered = MeteredLlmGateway(
-        inner,
-        ledger,
-        catalog,
-        settings.daily_budget_nanos,
+    store = RuntimeStore(
+        {item.model: item.max_tokens for item in catalog.models},
+        daily_budget_nanos=settings.daily_budget_nanos,
     )
-    return inner, LoggingLlmGateway(metered, ledger), ledger
+    inner = llm_gateway if llm_gateway is not None else DeepSeekLlmGateway(store=store)
+    metered = MeteredLlmGateway(inner, ledger, catalog, store=store)
+    return inner, LoggingLlmGateway(metered, ledger), ledger, store

@@ -11,6 +11,7 @@
 | As-built E4 | `docs/phases/orchestrator-e4.md` |
 | As-built E5 | `docs/phases/orchestrator-e5.md` |
 | As-built E6 | `docs/phases/orchestrator-e6.md` |
+| As-built settings-hot-reload | `docs/phases/orchestrator-settings-hot-reload.md` |
 | Архитектура | `docs/architecture/skillhub.md` |
 | Модель угроз | `docs/security/threat-model.md` |
 | Gate-отчёты E1 | `docs/handoff/archive/` |

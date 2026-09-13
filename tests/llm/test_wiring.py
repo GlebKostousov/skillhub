@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from skillhub import web
 from skillhub.app_factory import create_app
 from skillhub.llm import DeepSeekLlmGateway, FakeLlmGateway, LlmResult, LlmUsage
+from skillhub.runtime import RuntimeStore
 from skillhub.web import create_router
 from skillhub.web.usage_routes import LoggingLlmGateway
 
@@ -17,6 +18,7 @@ def test_create_app_does_not_select_fake_gateway() -> None:
 
     assert isinstance(app.state.llm_gateway, LoggingLlmGateway)
     assert isinstance(app.state.llm_transport, DeepSeekLlmGateway)
+    assert isinstance(app.state.runtime_store, RuntimeStore)
     assert not isinstance(app.state.llm_gateway, FakeLlmGateway)
     assert not isinstance(app.state.llm_gateway, DeepSeekLlmGateway)
 

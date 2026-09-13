@@ -866,6 +866,7 @@ def test_local_javascript_avoids_known_html_execution_sinks() -> None:
         "app.js",
         "assistant.js",
         "protocol.js",
+        "settings.js",
     ]
     forbidden_sinks = [
         "innerHTML",

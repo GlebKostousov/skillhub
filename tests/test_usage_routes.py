@@ -247,6 +247,49 @@ def test_null_limit_renders_as_na(usage_path: Path) -> None:
     assert "n/a" in page.text
 
 
+def test_api_usage_limit_follows_overlay_budget(
+    usage_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Проверяет, что today.limit_nanos читает живой снимок overlay."""
+    del usage_path
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SKILLHUB_DAILY_BUDGET_NANOS", "1000")
+    app = create_app()
+    client = TestClient(app)
+
+    before = client.get("/api/usage").json()
+    app.state.runtime_store.save(_overlay_payload(daily_budget_nanos=7777))
+    after = client.get("/api/usage").json()
+    page = client.get("/usage")
+
+    assert before["today"]["limit_nanos"] == 1000
+    assert after["today"]["limit_nanos"] == 7777
+    assert "7777 нано-USD" in _section_between(page.text, "Сегодня", "Журнал")
+
+
+def _overlay_payload(**overrides: object) -> dict[str, object]:
+    """Собирает полный документ overlay в пределах тарифного потолка."""
+    values: dict[str, object] = {
+        "model": "deepseek-flash",
+        "max_tokens": 4096,
+        "temperature": 0,
+        "timeout": 60.0,
+        "stream": False,
+        "thinking": "enabled",
+        "reasoning_effort": "high",
+        "top_p": 1.0,
+        "frequency_penalty": 0,
+        "presence_penalty": 0,
+        "stop": [],
+        "response_format": "text",
+        "daily_budget_nanos": None,
+    }
+    values.update(overrides)
+    return values
+
+
 def _reserved_event(cost_nanos: int, created_at: datetime) -> UsageEvent:
     """Собирает reserved-строку без пользовательского текста."""
     event = _committed_event("req-reserved", cost_nanos, created_at)

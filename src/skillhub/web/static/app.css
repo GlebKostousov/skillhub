@@ -36,6 +36,7 @@ body {
 
 .btn,
 .form-control,
+.form-select,
 nav a,
 .touch-target {
   min-height: 44px;
@@ -49,7 +50,14 @@ nav a,
 
 a:focus-visible,
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
   outline: 0.2rem solid var(--bs-primary);
   outline-offset: 0.2rem;
+}
+
+.settings-field .form-control,
+.settings-field .form-select {
+  max-width: 32rem;
 }

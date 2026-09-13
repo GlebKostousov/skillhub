@@ -12,6 +12,7 @@ from structlog.contextvars import get_contextvars
 
 from skillhub.core import SkillHubError
 from skillhub.llm import LlmGateway, LlmRequest, LlmResult
+from skillhub.runtime import RuntimeStore
 from skillhub.usage import UsageEvent, UsageLedger
 
 
@@ -90,24 +91,24 @@ class LoggingLlmGateway(LlmGateway):
 class _UsageRoutes:
     """Связывает тонкие HTTP-обработчики расходов с журналом."""
 
-    __slots__ = ("_daily_budget_nanos", "_ledger", "_templates")
+    __slots__ = ("_ledger", "_store", "_templates")
 
     def __init__(
         self,
         templates: Jinja2Templates,
         ledger: UsageLedger,
-        daily_budget_nanos: int | None,
+        store: RuntimeStore,
     ) -> None:
-        """Сохраняет шаблоны, журнал и дневной потолок.
+        """Сохраняет шаблоны, журнал и хранилище живого потолка.
 
         Args:
             templates: шаблоны серверных страниц.
             ledger: журнал committed-строк текущего процесса.
-            daily_budget_nanos: дневной лимит в нано-USD или его отсутствие.
+            store: хранилище снимка дневного потолка.
         """
         self._templates = templates
         self._ledger = ledger
-        self._daily_budget_nanos = daily_budget_nanos
+        self._store = store
 
     def usage_json(
         self,
@@ -121,7 +122,7 @@ class _UsageRoutes:
         return build_usage_report(
             self._ledger,
             request_id,
-            self._daily_budget_nanos,
+            self._live_budget(),
         )
 
     def usage_page(
@@ -138,7 +139,7 @@ class _UsageRoutes:
         report = build_usage_report(
             self._ledger,
             request_id,
-            self._daily_budget_nanos,
+            self._live_budget(),
         )
         return self._templates.TemplateResponse(
             request=request,
@@ -146,25 +147,28 @@ class _UsageRoutes:
             context=dict(report),
         )
 
+    def _live_budget(self) -> int | None:
+        return self._store.snapshot().values.daily_budget_nanos
+
 
 def create_usage_router(
     templates: Jinja2Templates,
     *,
     ledger: UsageLedger,
-    daily_budget_nanos: int | None,
+    store: RuntimeStore,
 ) -> APIRouter:
     """Собирает маршрутизатор страницы и JSON расходов.
 
     Args:
         templates: шаблоны серверных страниц.
         ledger: журнал committed-строк текущего процесса.
-        daily_budget_nanos: дневной лимит в нано-USD или его отсутствие.
+        store: хранилище живого дневного потолка.
 
     Returns:
         Маршрутизатор с двумя маршрутами чтения.
     """
     router = APIRouter()
-    routes = _UsageRoutes(templates, ledger, daily_budget_nanos)
+    routes = _UsageRoutes(templates, ledger, store)
     router.add_api_route("/api/usage", routes.usage_json, methods=["GET"])
     router.add_api_route(
         "/usage",

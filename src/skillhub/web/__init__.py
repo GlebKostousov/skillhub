@@ -10,6 +10,9 @@ from skillhub.web.errors import install_error_handlers
 from skillhub.web.protocol_routes import create_protocol_router
 from skillhub.web.routes import create_router
 from skillhub.web.security import SecurityHeadersMiddleware
+from skillhub.web.settings_routes import (
+    create_settings_router as create_settings_router,
+)
 from skillhub.web.usage_routes import (
     LoggingLlmGateway as LoggingLlmGateway,
 )
@@ -25,5 +28,6 @@ __all__ = [
     "create_assistant_router",
     "create_protocol_router",
     "create_router",
+    "create_settings_router",
     "install_error_handlers",
 ]

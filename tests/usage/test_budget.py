@@ -22,6 +22,7 @@ from skillhub.llm import (
     MeteredLlmGateway,
     ProviderError,
 )
+from skillhub.runtime import RuntimeStore
 from skillhub.usage import (
     DailyBudgetExceededError,
     LedgerError,
@@ -289,6 +290,86 @@ def test_all_message_code_points_count_in_reserve(tmp_path: Path) -> None:
     assert inner.requests == []
 
 
+def test_overlay_budget_model_and_max_tokens_apply_on_same_gateway(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Проверяет смену модели, потолка и max_tokens без нового шлюза."""
+    monkeypatch.chdir(tmp_path)
+    catalog = load_tariffs(_write_two_models(tmp_path))
+    store = RuntimeStore(
+        {item.model: item.max_tokens for item in catalog.models},
+        daily_budget_nanos=2000,
+    )
+    inner = FakeLlmGateway(result=_result("ответ", 4, 6))
+    gateway = MeteredLlmGateway(
+        inner,
+        open_ledger(tmp_path / "usage.sqlite3"),
+        catalog,
+        store=store,
+    )
+
+    with pytest.raises(DailyBudgetExceededError):
+        gateway.complete(_request("x"))
+    store.save(
+        _overlay_payload(
+            model=DEEPSEEK_MODEL,
+            max_tokens=1,
+            daily_budget_nanos=2000,
+        )
+    )
+    gateway.complete(_request("x"))
+    store.save(_overlay_payload(model="probe-flash", daily_budget_nanos=0))
+    with pytest.raises(DailyBudgetExceededError):
+        gateway.complete(_request("x"))
+
+    event = open_ledger(tmp_path / "usage.sqlite3").list()[0]
+    assert event.model == DEEPSEEK_MODEL
+    assert event.status == "committed"
+    assert inner.requests == [_request("x")]
+
+
+def test_complete_keeps_entry_snapshot_if_overlay_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Проверяет, что reserve и commit держат один снимок на весь вызов."""
+    monkeypatch.chdir(tmp_path)
+    catalog = load_tariffs(_write_two_models(tmp_path))
+    store = RuntimeStore(
+        {item.model: item.max_tokens for item in catalog.models},
+        daily_budget_nanos=10_000_000_000,
+    )
+    store.save(_overlay_payload(model="probe-flash"))
+    inner = _OverlaySwapGateway(store, _result("ответ", 4, 6))
+    gateway = MeteredLlmGateway(
+        inner,
+        open_ledger(tmp_path / "usage.sqlite3"),
+        catalog,
+        store=store,
+    )
+
+    gateway.complete(_request("x"))
+
+    event = open_ledger(tmp_path / "usage.sqlite3").list()[0]
+    assert event.model == "probe-flash"
+    assert store.snapshot().values.model == DEEPSEEK_MODEL
+
+
+class _OverlaySwapGateway(LlmGateway):
+    """Меняет overlay после входа в complete() внутреннего шлюза."""
+
+    def __init__(self, store: RuntimeStore, result: LlmResult) -> None:
+        self._store = store
+        self._result = result
+
+    def complete(self, request: LlmRequest) -> LlmResult:
+        """Пишет чужую модель в overlay и возвращает успешный результат."""
+        del request
+        self._store.save(_overlay_payload(model=DEEPSEEK_MODEL, daily_budget_nanos=1))
+        return self._result
+
+
 class _BrokenGateway(LlmGateway):
     """Поднимает RuntimeError после входа в complete()."""
 
@@ -452,6 +533,27 @@ def _tariff_payload(
         "verified_at": "2026-09-11",
         "models": [_model_entry(model, cache_miss, output, max_tokens)],
     }
+
+
+def _overlay_payload(**overrides: object) -> dict[str, object]:
+    """Собирает полный документ overlay для смены снимка в тесте."""
+    values: dict[str, object] = {
+        "model": "probe-flash",
+        "max_tokens": 4096,
+        "temperature": 0,
+        "timeout": 60.0,
+        "stream": False,
+        "thinking": "enabled",
+        "reasoning_effort": "high",
+        "top_p": 1.0,
+        "frequency_penalty": 0,
+        "presence_penalty": 0,
+        "stop": [],
+        "response_format": "text",
+        "daily_budget_nanos": 10_000_000_000,
+    }
+    values.update(overrides)
+    return values
 
 
 def _model_entry(
