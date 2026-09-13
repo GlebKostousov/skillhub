@@ -5,10 +5,12 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx2 import Response
 
 from skillhub.app_factory import create_app
+from skillhub.runtime import RuntimeStore
 from skillhub.runtime._constants import EDITABLE_FIELDS, FIELD_HINTS
 
 _SKILLS_ROOT = Path(__file__).resolve().parents[1] / "skills"
@@ -143,7 +145,7 @@ def test_settings_post_then_get_reflects_store(client: TestClient) -> None:
     response = _post_settings(client, token, values)
     after = client.get("/api/settings").json()
     page = client.get("/settings")
-    store = client.app.state.runtime_store
+    store = _runtime_store(client)
 
     assert response.status_code == 200
     assert response.json() == after
@@ -175,7 +177,7 @@ def test_settings_post_accepts_json_integer_timeout_and_top_p(
         content=body,
         headers={**_ORIGIN, "content-type": "application/json"},
     )
-    store = client.app.state.runtime_store
+    store = _runtime_store(client)
     snapshot = store.snapshot()
 
     assert '"timeout": 60' in body
@@ -213,6 +215,15 @@ def test_settings_js_uses_text_content_only() -> None:
     assert script.status_code == 200
     assert "textContent" in script.text
     assert "innerHTML" not in script.text
+
+
+def _runtime_store(client: TestClient) -> RuntimeStore:
+    """Возвращает RuntimeStore из приложения FastAPI."""
+    app = client.app
+    assert isinstance(app, FastAPI)
+    store = app.state.runtime_store
+    assert isinstance(store, RuntimeStore)
+    return store
 
 
 def _csrf(client: TestClient) -> str:
