@@ -44,6 +44,8 @@ def _run_git(*arguments: str) -> subprocess.CompletedProcess[str]:
         ".mypy_cache/state",
         ".ruff_cache/state",
         ".hypothesis/state",
+        ".import_linter_cache/state",
+        "runtime-overlay.json",
         "build/artifact",
         "dist/artifact",
         "skillhub.egg-info/state",

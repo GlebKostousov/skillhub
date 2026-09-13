@@ -1,17 +1,13 @@
 # Документация SkillHub
 
-| Дверь | Путь |
+Как устроен ассистент и почему выбран именно этот контур.
+
+| Страница | О чём |
 |---|---|
-| Очередь эпиков | `docs/phases/backlog-ready-queue.md` |
-| Сделанное | `docs/phases/done-registry.md` |
-| Программа | `docs/phases/skillhub-program.md` |
-| As-built E1 | `docs/phases/orchestrator-e1.md` |
-| As-built E2 | `docs/phases/orchestrator-e2.md` |
-| As-built E3 | `docs/phases/orchestrator-e3.md` |
-| As-built E4 | `docs/phases/orchestrator-e4.md` |
-| As-built E5 | `docs/phases/orchestrator-e5.md` |
-| As-built E6 | `docs/phases/orchestrator-e6.md` |
-| As-built settings-hot-reload | `docs/phases/orchestrator-settings-hot-reload.md` |
-| Архитектура | `docs/architecture/skillhub.md` |
-| Модель угроз | `docs/security/threat-model.md` |
-| Gate-отчёты E1 | `docs/handoff/archive/` |
+| [Архитектура](architecture/skillhub.md) | Контекст, контейнеры, границы модулей |
+| [Обоснование решений](architecture/decision-rationale.md) | Альтернативы и причины выбора |
+| [Формат протокола](adr/0001-protocol-format-strict-markdown-2026-09-11.md) | Почему протокол — строгий Markdown |
+| [Модель угроз](security/threat-model.md) | Активы, границы доверия, меры |
+| [Словарь](glossary.md) | Термины, которые встречаются в коде и интерфейсе |
+
+Запуск и проверка — в [корневом README](../README.md).

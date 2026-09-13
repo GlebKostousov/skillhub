@@ -24,6 +24,8 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 .hypothesis/
+.import_linter_cache/
+runtime-overlay.json
 
 # Packages and build output
 build/
@@ -43,6 +45,7 @@ Desktop.ini
 .grok-orch-wt
 .serena/
 .superpowers/
+docs/superpowers/
 
 # Logs and temporary files
 *.log
