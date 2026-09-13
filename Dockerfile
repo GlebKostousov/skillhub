@@ -33,6 +33,8 @@ COPY --from=builder --chown=skillhub:skillhub /app/src /app/src
 COPY --from=builder --chown=skillhub:skillhub /app/skills /app/skills
 COPY --from=builder --chown=skillhub:skillhub /app/config /app/config
 
+RUN chown skillhub:skillhub /app
+
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 

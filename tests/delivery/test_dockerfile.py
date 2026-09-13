@@ -65,6 +65,18 @@ def test_final_stage_runs_as_non_root() -> None:
     assert users[-1].split(":")[0] not in {"root", "0"}
 
 
+def test_runtime_workdir_is_writable_by_app_user() -> None:
+    """Проверяет, что рабочий каталог отдан пользователю процесса."""
+    runtime = final_stage(_instructions())
+    owned = [
+        argument
+        for name, argument in runtime
+        if name == "RUN" and "chown" in argument and "/app" in argument
+    ]
+    assert owned
+    assert any("skillhub" in argument for argument in owned)
+
+
 def test_image_syncs_frozen_lockfile_without_dev_group() -> None:
     """Проверяет pinned lockfile и отсутствие dev-группы в образе."""
     dockerfile = _dockerfile()
