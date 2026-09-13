@@ -1,6 +1,6 @@
 # Backlog / Ready Queue
 
-Дата: 2026-09-12
+Дата: 2026-09-13
 
 ## Правило очереди
 
@@ -10,7 +10,7 @@
 
 Открытых эпиков нет.
 
-Закрытое: `E1`, `E2`, `E3`, `E4`, `E5`, `E6` — `docs/phases/done-registry.md`.
+Закрытое: `E1`, `E2`, `E3`, `E4`, `E5`, `E6`, `settings-hot-reload` — `docs/phases/done-registry.md`.
 
 ## Feature freeze
 
