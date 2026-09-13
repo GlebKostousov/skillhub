@@ -10,20 +10,36 @@
   </head>
   <body class="bg-body-tertiary">
     <a class="visually-hidden-focusable" href="#content">К содержимому</a>
-    <header class="border-bottom bg-body">
+    <header class="app-header border-bottom bg-body">
       <nav aria-label="Основная навигация">
-        <div class="container d-flex align-items-center gap-4 py-3">
-          <a href="/">Главная</a>
-          <a href="/skills">Скиллы</a>
-          <a href="/protocol">Протокол</a>
-          <a href="/usage">Расходы</a>
-          <a href="/settings"{% if nav_current == "settings" %} aria-current="page"{% endif %}>Настройки</a>
+        <div class="navbar navbar-expand">
+          <div class="container py-2">
+            <a class="navbar-brand" href="/">SkillHub</a>
+            <div class="navbar-nav me-auto">
+              <a href="/"{% if request.url.path == '/' %} aria-current="page"{% endif %}>Главная</a>
+              <a href="/skills"{% if request.url.path == '/skills' %} aria-current="page"{% endif %}>Скиллы</a>
+              <a href="/usage"{% if request.url.path == '/usage' %} aria-current="page"{% endif %}>Расходы</a>
+              <a href="/settings"{% if nav_current == "settings" %} aria-current="page"{% endif %}>Настройки</a>
+            </div>
+            <input
+              class="btn-check"
+              id="theme-dark"
+              type="checkbox"
+              autocomplete="off"
+              data-theme-toggle
+            >
+            <label class="btn btn-outline-secondary" for="theme-dark">
+              <span class="theme-label-to-dark">Тёмная тема</span>
+              <span class="theme-label-to-light">Светлая тема</span>
+            </label>
+          </div>
         </div>
       </nav>
     </header>
-    <main id="content" tabindex="-1" class="container py-5">
+    <main id="content" tabindex="-1" class="container py-4 py-md-5">
       {% block content %}{% endblock %}
     </main>
+    <script src="{{ url_for('static', path='/app.js') }}" defer></script>
     {% block scripts %}{% endblock %}
   </body>
 </html>

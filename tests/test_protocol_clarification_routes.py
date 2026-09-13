@@ -38,8 +38,15 @@ _INVALID_MARKDOWN = "это не протокол"
 _DATE_QUESTION = {
     "id": "date",
     "target": "date",
-    "reason": "Дата встречи не указана.",
-    "hint": "Укажите дату встречи.",
+    "reason": "Какого числа была встреча?",
+    "hint": "Например, 13.09.2026",
+    "status": "pending",
+}
+_OPEN_QUESTION = {
+    "id": "question:0",
+    "target": "question:0",
+    "reason": "вопрос",
+    "hint": "Короткий ответ",
     "status": "pending",
 }
 
@@ -70,25 +77,31 @@ class _CsrfParser(HTMLParser):
                 self.tokens.append(token)
 
 
-def test_protocol_page_renders_clarification_table_without_generator() -> None:
-    """Проверяет таблицу уточнений на странице без порта генерации."""
-    response = TestClient(create_app()).get("/protocol")
+def test_protocol_page_renders_clarification_list_without_generator() -> None:
+    """Проверяет список уточнений на главной без порта генерации."""
+    response = TestClient(create_app()).get("/")
     html = _PROTOCOL_HTML.read_text(encoding="utf-8")
     script = _PROTOCOL_JS.read_text(encoding="utf-8")
 
     assert response.status_code == 200
-    assert "Генерация черновика недоступна." in response.text
-    assert "Проблема" in response.text
-    assert "Ответ" in response.text
-    assert "Действия" in response.text
-    assert "Статус" in response.text
-    assert 'id="protocol-clarifications-table"' in response.text
+    assert "Генерация черновика недоступна." not in response.text
+    assert "Вопросы для полноты данных" in response.text
+    assert "Записать ответы" in response.text
+    assert "Собрать заново" in response.text
+    assert "Сохранить в Word" in response.text
+    assert 'id="protocol-clarifications-list"' in response.text
+    assert 'id="protocol-finalize-button" disabled' in html
+    assert 'id="protocol-revise-button" disabled' in html
     assert 'id="protocol-markdown"' in html
-    assert "Отправить" in script
+    assert "Показать уточнения" not in html
     assert "Пропустить" in script
-    assert "Отменить выбор" in script
+    assert "Вернуть вопрос" in script
+    assert "window.SkillHubProtocol" in script
+    assert "appendChild" in script
     assert "/protocol/clarifications" in script
-    assert "/protocol/answer" in script
+    assert "/protocol/finalize" in script
+    assert "/protocol/revise" in script
+    assert "allResolved" in script
     assert "innerHTML" not in script
     assert "trim" in script
 
@@ -104,7 +117,7 @@ def test_clarifications_return_pending_questions_from_markdown() -> None:
     )
 
     assert response.status_code == 200
-    assert response.json() == {"clarifications": [_DATE_QUESTION]}
+    assert response.json() == {"clarifications": [_DATE_QUESTION, _OPEN_QUESTION]}
 
 
 def test_clarifications_parse_error_keeps_draft_envelope() -> None:
@@ -149,7 +162,7 @@ def test_answer_applies_one_decision_and_returns_text() -> None:
     assert response.status_code == 200
     assert protocol.date == "2026-10-01"
     assert protocol.participants == ("Анна",)
-    assert payload["clarifications"] == []
+    assert payload["clarifications"] == [_OPEN_QUESTION]
 
 
 def test_empty_answer_is_rejected_by_server() -> None:
@@ -193,7 +206,7 @@ def test_skip_does_not_require_value_and_keeps_placeholder() -> None:
     payload = response.json()
     assert response.status_code == 200
     assert parse(payload["text"]).date == "—"
-    assert payload["clarifications"] == [_DATE_QUESTION]
+    assert payload["clarifications"] == [_DATE_QUESTION, _OPEN_QUESTION]
 
 
 def test_foreign_clarification_id_is_rejected() -> None:
@@ -255,7 +268,8 @@ def test_cancel_first_of_two_answers_keeps_second_field() -> None:
     assert parse(after_cancel_first).participants == ("Борис",)
     assert "previousText" not in script
     assert "baseText" in script
-    assert "replayRemaining" in script
+    assert "rememberDecision" in script
+    assert "cancelChoice" in script
 
 
 def test_answer_parse_error_keeps_draft_envelope() -> None:
@@ -308,7 +322,7 @@ def _csrf(client: TestClient) -> str:
         client: клиент одного экземпляра приложения.
     """
     parser = _CsrfParser()
-    parser.feed(client.get("/protocol").text)
+    parser.feed(client.get("/").text)
     assert len(parser.tokens) == 1
     return parser.tokens[0]
 

@@ -6,6 +6,8 @@ from typing import Protocol as TypingProtocol
 
 from docx import Document
 from docx.document import Document as DocumentObject
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.table import Table
 
 from skillhub.docx_export._placeholders import (
@@ -82,10 +84,10 @@ def _add_tasks_section(document: DocumentObject, protocol: Protocol) -> None:
     if not protocol.tasks:
         document.add_paragraph(sanitize_docx_text(EMPTY_SECTION), style="List Bullet")
         return
-    _fill_tasks_table(
-        document.add_table(rows=1 + len(protocol.tasks), cols=3),
-        protocol,
-    )
+    table = document.add_table(rows=1 + len(protocol.tasks), cols=3)
+    table.style = "Table Grid"
+    _fill_tasks_table(table, protocol)
+    _apply_visible_borders(table)
 
 
 def _fill_tasks_table(table: Table, protocol: Protocol) -> None:
@@ -104,6 +106,22 @@ def _fill_tasks_table(table: Table, protocol: Protocol) -> None:
 def _write_row(cells: Sequence[_TextCell], values: tuple[str, ...]) -> None:
     for cell, value in zip(cells, values, strict=True):
         cell.text = sanitize_docx_text(value)
+
+
+def _apply_visible_borders(table: Table) -> None:
+    tbl_pr = table._tbl.tblPr  # noqa: SLF001
+    existing = tbl_pr.find(qn("w:tblBorders"))
+    if existing is not None:
+        tbl_pr.remove(existing)
+    borders = OxmlElement("w:tblBorders")
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        line = OxmlElement(f"w:{edge}")
+        line.set(qn("w:val"), "single")
+        line.set(qn("w:sz"), "8")
+        line.set(qn("w:space"), "0")
+        line.set(qn("w:color"), "000000")
+        borders.append(line)
+    tbl_pr.append(borders)
 
 
 def _document_bytes(document: DocumentObject) -> bytes:

@@ -5,11 +5,61 @@
 {% block content %}
   <header class="mb-4">
     <p class="text-body-secondary mb-2">Каталог режимов ассистента</p>
-    <h1 class="display-6 mb-3">Скиллы</h1>
-    <p class="lead mb-0">
+    <h1 class="display-6 fw-semibold mb-3">Скиллы</h1>
+    <p class="lead mb-3">
       Ищите режим по названию или системному имени.
     </p>
+    <button
+      class="btn btn-outline-primary"
+      type="button"
+      data-add-skill-open
+      popovertarget="add-skill-dialog"
+    >
+      Как добавить скилл
+    </button>
   </header>
+
+  <dialog
+    class="skill-help-dialog"
+    id="add-skill-dialog"
+    popover
+    aria-labelledby="add-skill-title"
+  >
+    <div class="modal-content border-0">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="add-skill-title">Как добавить новый скилл</h2>
+        <button
+          class="btn-close"
+          type="button"
+          data-add-skill-close
+          popovertarget="add-skill-dialog"
+          popovertargetaction="hide"
+          aria-label="Закрыть"
+        ></button>
+      </div>
+      <div class="modal-body">
+        <ol class="mb-0">
+          <li class="mb-2">
+            Создайте папку в каталоге <code>skills</code> с системным именем
+            латиницей, например <code>my-review</code>.
+          </li>
+          <li class="mb-2">
+            Положите туда файл <code>SKILL.md</code>. В начале — YAML с полями
+            <code>name</code>, <code>caption</code> и <code>description</code>.
+            Ниже — инструкция, которую получит модель после выбора режима.
+          </li>
+          <li class="mb-2">
+            При необходимости добавьте справочные файлы в подкаталог
+            <code>references</code>.
+          </li>
+          <li>
+            На этой странице нажмите «Перезагрузить каталог». Новый режим
+            появится в списке и станет доступен классификатору.
+          </li>
+        </ol>
+      </div>
+    </div>
+  </dialog>
 
   {% if query_error %}
     <div class="alert alert-danger" role="alert">
@@ -170,8 +220,4 @@
       </div>
     </section>
   {% endif %}
-{% endblock %}
-
-{% block scripts %}
-  <script src="{{ url_for('static', path='/app.js') }}" defer></script>
 {% endblock %}

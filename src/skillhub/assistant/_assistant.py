@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 """Собирает выбор режима и диспетчеризацию простого обработчика."""
 
 from collections.abc import Mapping
@@ -14,7 +15,11 @@ from skillhub.registry import Skill
 from skillhub.usage import bind_call
 
 _MESSAGE_SUCCESS = "Ответ готов."
-_MESSAGE_NONE = "Подходящий режим не выбран."
+_MESSAGE_CLASSIFIED = "Режим выбран."
+_MESSAGE_NONE = (
+    "Не поняла задачу. Напишите коротко, что сделать — "
+    "например, собрать протокол встречи."
+)
 _MESSAGE_HANDLER_UNAVAILABLE = "Обработчик выбранного режима недоступен."
 
 
@@ -34,6 +39,23 @@ class Assistant:
         """
         self._classifier = classifier
         self._handlers = handlers
+
+    def classify(
+        self,
+        intent: str,
+        snapshot: Mapping[str, Skill],
+    ) -> AssistantOutcome:
+        """Выбирает режим и сразу возвращает его подпись.
+
+        Args:
+            intent: короткая задача пользователя.
+            snapshot: снимок валидных скиллов без публикации тела.
+
+        Returns:
+            Исход выбора режима без запуска обработчика.
+        """
+        with bind_call(operation="classify"):
+            return _classify_only(self._classifier, intent, snapshot)
 
     def run(
         self,
@@ -75,6 +97,40 @@ def _select_and_run(
     except ProviderError:
         return _gateway_provider(None, None)
     return _after_classification(handlers, classification, snapshot, material)
+
+
+def _classify_only(
+    classifier: SkillClassifier,
+    intent: str,
+    snapshot: Mapping[str, Skill],
+) -> AssistantOutcome:
+    try:
+        classification = classifier.select(intent, _metadata_from(snapshot))
+    except GenerationUnavailableError:
+        return _gateway_unavailable(None, None)
+    except ProviderError:
+        return _gateway_provider(None, None)
+    selected = classification.skill
+    if selected is None:
+        return _logged(
+            AssistantOutcome(
+                selected_skill=None,
+                caption=None,
+                outcome="none",
+                text=None,
+                message=_MESSAGE_NONE,
+            )
+        )
+    skill = snapshot.get(selected)
+    return _logged(
+        AssistantOutcome(
+            selected_skill=selected,
+            caption=_caption_of(skill),
+            outcome="classified",
+            text=None,
+            message=_MESSAGE_CLASSIFIED,
+        )
+    )
 
 
 def _after_classification(

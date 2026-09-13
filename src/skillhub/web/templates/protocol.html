@@ -1,99 +1,74 @@
-{% extends "base.html" %}
-
-{% block title %}Протокол встречи — SkillHub{% endblock %}
-
-{% block content %}
-  <header class="mb-4">
-    <p class="text-body-secondary mb-2">Черновик и выгрузка</p>
-    <h1 class="display-6 mb-3">Протокол встречи</h1>
-    <p class="lead mb-0">
-      Соберите черновик, закройте уточнения и сформируйте итоговый протокол или выгрузите Word.
+<section
+  id="protocol-followup"
+  class="card border-0 shadow-sm d-none"
+  aria-labelledby="protocol-followup-title"
+>
+  <div class="card-body p-4 p-md-5">
+    <h2 id="protocol-followup-title" class="h4">Вопросы для полноты данных</h2>
+    <p class="text-body-secondary">
+      Если чего-то не хватает — ответьте или пропустите.
+      Потом можно вставить ответы в черновик, собрать протокол заново
+      или сохранить в Word.
     </p>
-  </header>
 
-  <input type="hidden" id="protocol-csrf" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" id="protocol-csrf" value="{{ csrf_token }}">
+    <label class="visually-hidden" for="protocol-transcript">Текст встречи</label>
+    <textarea
+      class="d-none"
+      id="protocol-transcript"
+      rows="8"
+      maxlength="1048576"
+    ></textarea>
+    <label class="visually-hidden" for="protocol-markdown">Текст протокола</label>
+    <textarea
+      class="d-none"
+      id="protocol-markdown"
+      rows="16"
+      maxlength="65536"
+    ></textarea>
+    <button class="d-none" type="button" id="protocol-draft-button" disabled>
+      Собрать черновик
+    </button>
 
-  <section class="card border-0 shadow-sm mb-4" aria-labelledby="protocol-transcript-title">
-    <div class="card-body p-4">
-      <h2 id="protocol-transcript-title" class="h4">Транскрипция</h2>
-      <label class="form-label" for="protocol-transcript">Текст встречи</label>
-      <textarea
-        class="form-control mb-3"
-        id="protocol-transcript"
-        rows="8"
-        maxlength="1048576"
-      ></textarea>
-      {% if not generation_available %}
-        <div class="alert alert-warning" role="alert" id="protocol-generation-unavailable">
-          Генерация черновика недоступна.
-        </div>
-      {% endif %}
-      <button class="btn btn-primary" type="button" id="protocol-draft-button"{% if not generation_available %} disabled{% endif %}>
-        Собрать черновик
-      </button>
+    <div id="protocol-error" class="alert alert-danger d-none" role="alert" aria-live="assertive">
+      <p id="protocol-error-message" class="mb-1"></p>
+      <p id="protocol-error-line" class="mb-1"></p>
+      <p id="protocol-error-expected" class="mb-1"></p>
+      <p id="protocol-error-got" class="mb-0"></p>
     </div>
-  </section>
 
-  <section class="card border-0 shadow-sm mb-4" aria-labelledby="protocol-markdown-title">
-    <div class="card-body p-4">
-      <h2 id="protocol-markdown-title" class="h4">Текст протокола</h2>
-      <label class="form-label" for="protocol-markdown">Нормативный Markdown</label>
-      <textarea
-        class="form-control mb-3"
-        id="protocol-markdown"
-        rows="16"
-        maxlength="65536"
-      ></textarea>
-      <div id="protocol-error" class="alert alert-danger d-none" role="alert" aria-live="assertive">
-        <p id="protocol-error-message" class="mb-1"></p>
-        <p id="protocol-error-line" class="mb-1"></p>
-        <p id="protocol-error-expected" class="mb-1"></p>
-        <p id="protocol-error-got" class="mb-0"></p>
-      </div>
-      <button class="btn btn-outline-primary" type="button" id="protocol-download-button">
-        Выгрузить Word
-      </button>
-    </div>
-  </section>
-
-  <section class="card border-0 shadow-sm mb-4" aria-labelledby="protocol-clarifications-title">
-    <div class="card-body p-4">
-      <h2 id="protocol-clarifications-title" class="h4">Уточнения</h2>
-      <p class="text-body-secondary">
-        Закройте важные пропуски в тексте протокола или пропустите строку.
+    <p id="protocol-clarifications-loading" class="d-none" role="status">
+      Собираю вопросы…
+    </p>
+    <p id="protocol-clarifications-empty" class="d-none" role="status">
+      Похоже, всё уже на месте. Можно сразу сохранить в Word.
+    </p>
+    <div
+      id="protocol-clarifications-list"
+      class="protocol-gap-list d-none"
+    ></div>
+    <div id="protocol-unconfirmed" class="alert alert-warning d-none" role="status">
+      <p id="protocol-unconfirmed-message" class="mb-0">
+        Протокол обновлён. Часть формулировок в записи встречи звучит не дословно —
+        перед отправкой Word просто проглядите решения и задачи.
       </p>
-      <button class="btn btn-outline-primary mb-3" type="button" id="protocol-clarifications-button">
-        Показать уточнения
-      </button>
-      <button class="btn btn-primary mb-3" type="button" id="protocol-finalize-button">
-        Сформировать итоговый протокол
-      </button>
-      <div id="protocol-unconfirmed" class="alert alert-warning d-none" role="status">
-        <p class="mb-2">Материал не подтвердил часть утверждений.</p>
-        <ul id="protocol-unconfirmed-list" class="mb-0"></ul>
-      </div>
-      <p id="protocol-clarifications-empty" class="d-none" role="status">
-        Важных пропусков нет.
-      </p>
-      <div id="protocol-clarifications-wrap" class="table-responsive d-none">
-        <table class="table align-middle" id="protocol-clarifications-table">
-          <thead>
-            <tr>
-              <th scope="col">Проблема</th>
-              <th scope="col">Ответ</th>
-              <th scope="col">Действия</th>
-              <th scope="col">Статус</th>
-            </tr>
-          </thead>
-          <tbody id="protocol-clarifications-body"></tbody>
-        </table>
-      </div>
+      <ul id="protocol-unconfirmed-list" class="visually-hidden"></ul>
     </div>
-  </section>
-
-  <p id="protocol-status" role="status" aria-live="polite"></p>
-{% endblock %}
-
-{% block scripts %}
-  <script src="{{ url_for('static', path='/protocol.js') }}" defer></script>
-{% endblock %}
+    <p class="text-body-secondary small mb-2" id="protocol-finalize-hint">
+      «Записать ответы» подставит ваши слова в черновик.
+      «Собрать заново» перепишет протокол целиком — дольше, зато связнее.
+    </p>
+    <div class="d-flex flex-wrap gap-2 mt-3">
+      <button class="btn btn-primary" type="button" id="protocol-finalize-button" disabled>
+        Записать ответы
+      </button>
+      <button class="btn btn-outline-primary" type="button" id="protocol-revise-button" disabled>
+        Собрать заново
+      </button>
+      <button class="btn btn-outline-secondary" type="button" id="protocol-download-button">
+        Сохранить в Word
+      </button>
+    </div>
+    <p id="protocol-status" class="protocol-status" role="status" aria-live="polite"></p>
+  </div>
+</section>

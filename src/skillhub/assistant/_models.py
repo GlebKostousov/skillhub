@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 AssistantOutcomeKind = Literal[
+    "classified",
     "success",
     "none",
     "handler_unavailable",

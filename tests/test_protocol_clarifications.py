@@ -33,7 +33,7 @@ def _protocol(**overrides: object) -> Protocol:
         "discussion": ("пункт обсуждения",),
         "decisions": ("решение",),
         "tasks": (),
-        "open_questions": ("открытый вопрос",),
+        "open_questions": (),
     }
     payload.update(overrides)
     return Protocol.model_validate(payload)
@@ -97,28 +97,48 @@ def test_cosmetic_gaps_do_not_create_clarifications() -> None:
     assert build_clarifications(protocol) == ()
 
 
-def test_priority_and_limit_keep_first_important_gaps() -> None:
-    """Проверяет приоритет дата → участники → задачи и лимит списка."""
-    tasks = tuple(
-        _task(title=f"Задача {index}", assignee=PLACEHOLDER, due=PLACEHOLDER)
-        for index in range(5)
-    )
+def test_priority_puts_open_questions_before_task_gaps() -> None:
+    """Проверяет порядок дата → участники → открытые вопросы → задачи."""
     items = build_clarifications(
-        _protocol(date=PLACEHOLDER, participants=(), tasks=tasks)
+        _protocol(
+            date=PLACEHOLDER,
+            participants=(),
+            open_questions=("Кто ведёт релиз?", "Нужен ли созвон?"),
+            tasks=(_task(assignee=PLACEHOLDER, due=PLACEHOLDER),),
+        )
     )
 
-    assert len(items) == MAX_CLARIFICATIONS
     assert [item.id for item in items] == [
         "date",
         "participants",
+        "question:0",
+        "question:1",
         "task:0:assignee",
         "task:0:due",
-        "task:1:assignee",
-        "task:1:due",
-        "task:2:assignee",
-        "task:2:due",
-        "task:3:assignee",
-        "task:3:due",
+    ]
+
+
+def test_priority_and_limit_keep_first_important_gaps() -> None:
+    """Проверяет лимит списка при длинном наборе пропусков."""
+    tasks = tuple(
+        _task(title=f"Задача {index}", assignee=PLACEHOLDER, due=PLACEHOLDER)
+        for index in range(12)
+    )
+    items = build_clarifications(
+        _protocol(
+            date=PLACEHOLDER,
+            participants=(),
+            open_questions=("Первый вопрос", "Второй вопрос"),
+            tasks=tasks,
+        )
+    )
+
+    assert len(items) == MAX_CLARIFICATIONS
+    assert [item.id for item in items[:4]] == [
+        "date",
+        "participants",
+        "question:0",
+        "question:1",
     ]
 
 
@@ -142,6 +162,20 @@ def test_apply_answer_changes_only_target_field() -> None:
     assert updated.discussion == protocol.discussion
     assert updated.decisions == protocol.decisions
     assert updated.open_questions == protocol.open_questions
+
+
+def test_apply_open_question_replaces_only_that_item() -> None:
+    """Проверяет, что ответ записывается только в выбранный открытый вопрос."""
+    protocol = _protocol(open_questions=("Кто ведёт релиз?", "Нужен ли созвон?"))
+
+    updated = apply_answers(
+        protocol,
+        ({"id": "question:0", "action": "answer", "value": "Марина"},),
+    )
+
+    assert updated.open_questions == ("Марина", "Нужен ли созвон?")
+    assert updated.date == protocol.date
+    assert updated.tasks == protocol.tasks
 
 
 def test_apply_participants_uses_comma_split_rule() -> None:
@@ -324,8 +358,8 @@ def test_clarification_model_forbids_extra_and_is_frozen() -> None:
     item = Clarification(
         id="date",
         target="date",
-        reason="Дата встречи не указана.",
-        hint="Укажите дату встречи.",
+        reason="Какого числа была встреча?",
+        hint="Например, 13.09.2026",
         status="pending",
     )
 
@@ -407,8 +441,10 @@ def test_answer_skip_combinations_do_not_change_other_fields(
     assert updated.title == protocol.title
     assert updated.discussion == protocol.discussion
     assert updated.decisions == protocol.decisions
-    assert updated.open_questions == protocol.open_questions
     assert updated.grammar_version == protocol.grammar_version
+    for index, question in enumerate(protocol.open_questions):
+        chosen = _chosen_value(decisions, f"question:{index}")
+        assert updated.open_questions[index] == (chosen or question)
     assert updated.date == (_chosen_value(decisions, "date") or protocol.date)
     participants_value = _chosen_value(decisions, "participants")
     if participants_value is None:

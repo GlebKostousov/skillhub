@@ -129,6 +129,17 @@ def test_invalid_json_is_none() -> None:
     assert classification == Classification(skill=None)
 
 
+def test_markdown_fence_and_underscore_name_are_accepted() -> None:
+    """Проверяет выбор режима из обёрнутого JSON и имени с подчёркиванием."""
+    classifier, _gateway = _classifier(
+        '```json\n{"skill": "meeting_protocol"}\n```',
+    )
+
+    classification = classifier.select("Составь протокол совещания", _FIXTURE_METADATA)
+
+    assert classification == Classification(skill="meeting-protocol")
+
+
 def test_allowlist_uses_snapshot_names_not_global_hardcode() -> None:
     """Проверяет, что allowlist берётся из переданного снимка."""
     metadata = (

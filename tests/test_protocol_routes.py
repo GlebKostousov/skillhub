@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 """Проверяет HTTP-швы страницы протокола и выгрузки Word."""
 
 from html.parser import HTMLParser
@@ -110,17 +111,21 @@ class _FakeGenerator:
 
 
 def test_protocol_page_renders_draft_and_download_controls() -> None:
-    """Проверяет серверную страницу черновика и кнопку выгрузки."""
-    response = TestClient(create_app()).get("/protocol")
+    """Проверяет панель протокола на главной и кнопку выгрузки."""
+    client = TestClient(create_app())
+    missing_page = client.get("/protocol", follow_redirects=False)
+    response = client.get("/")
     parser = _CsrfParser()
     parser.feed(response.text)
 
+    assert missing_page.status_code == 404
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert "<h1" in response.text
-    assert "Протокол встречи" in response.text
-    assert "Выгрузить Word" in response.text
-    assert "Генерация черновика недоступна." in response.text
+    assert "Вопросы для полноты данных" in response.text
+    assert "Сохранить в Word" in response.text
+    assert "Генерация черновика недоступна." not in response.text
+    assert 'id="protocol-followup"' in response.text
     assert 'id="protocol-draft-button" disabled' in response.text
     assert 'id="protocol-download-button"' in response.text
     assert 'id="protocol-markdown"' in response.text
@@ -134,26 +139,28 @@ def test_protocol_page_renders_draft_and_download_controls() -> None:
     assert "textContent" in script
     assert "try" in script
     assert "catch" in script
-    assert "Запрос не выполнен. Проверьте соединение и повторите." in script
+    assert "Не получилось связаться. Проверьте сеть и попробуйте ещё раз." in script
     assert "Собирается черновик…" in script
-    assert "Готовится Word…" in script
+    assert "Собираю файл Word…" in script
     assert "error.expected" in script
     assert "error.got" in script
     assert "error.line" in script
 
 
 def test_protocol_page_enables_draft_when_generation_available() -> None:
-    """Проверяет рабочую кнопку черновика при подключённом порте генерации."""
+    """Проверяет рабочий черновик API при подключённом порте генерации."""
     client = _router_client(
         _FakeGenerator(GeneratedDraft(text=_VALID_MARKDOWN, finish_reason="stop")),
     )
-    response = client.get("/protocol")
+    response = _post_json(
+        client,
+        "/protocol/draft",
+        _CSRF,
+        {"transcript": "Анна: обсудили тему."},
+    )
 
     assert response.status_code == 200
-    assert "Генерация черновика недоступна." not in response.text
-    assert 'id="protocol-draft-button" disabled' not in response.text
-    assert 'id="protocol-draft-button"' in response.text
-    assert "Выгрузить Word" in response.text
+    assert "text" in response.json()
 
 
 def test_draft_without_generator_is_unavailable() -> None:
@@ -408,7 +415,7 @@ def _csrf(client: TestClient) -> str:
         client: клиент одного экземпляра приложения.
     """
     parser = _CsrfParser()
-    parser.feed(client.get("/protocol").text)
+    parser.feed(client.get("/").text)
     assert len(parser.tokens) == 1
     return parser.tokens[0]
 

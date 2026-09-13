@@ -73,8 +73,12 @@ def test_settings_page_and_json_share_catalog(client: TestClient) -> None:
     assert 'aria-current="page"' in page.text
     assert '<a href="/settings"' in page.text
     assert names == list(EDITABLE_FIELDS)
+    assert "stream" not in names
     assert "environment" not in names
     assert "usage_path" not in names
+    assert by_name["max_tokens"]["min"] == 0
+    assert by_name["max_tokens"]["max"] == 100000
+    assert "Потоковая передача" not in page.text
     for name, hint in FIELD_HINTS.items():
         assert hint in page.text
         assert by_name[name]["hint"] == hint
@@ -83,6 +87,14 @@ def test_settings_page_and_json_share_catalog(client: TestClient) -> None:
         assert hint in by_name[name]["hint"]
     assert "По умолчанию" in page.text
     assert "Диапазон" in page.text or "Допустимо" in page.text
+    assert 'min="0"' in page.text
+    assert 'max="100000"' in page.text
+    assert "required" in page.text
+    assert "data-settings-error" in page.text
+    assert 'data-max-items="16"' in page.text
+    assert 'data-max-length="256"' in page.text
+    assert 'step="1"' in page.text
+    assert 'step="0.01"' in page.text
     assert "environment" in page.text
     assert "usage_path" in page.text
     assert payload == client.get("/api/settings").json()
@@ -140,7 +152,6 @@ def test_settings_post_then_get_reflects_store(client: TestClient) -> None:
     )
     values["max_tokens"] = ceiling
     values["temperature"] = 0.5
-    values["stream"] = False
 
     response = _post_settings(client, token, values)
     after = client.get("/api/settings").json()
@@ -188,6 +199,20 @@ def test_settings_post_accepts_json_integer_timeout_and_top_p(
     assert snapshot.values.temperature == 0.25
 
 
+def test_settings_out_of_range_number_is_invalid_overlay(client: TestClient) -> None:
+    """Проверяет отказ числа вне диапазона каталога."""
+    token = _csrf(client)
+    before = _values_from(client.get("/api/settings").json())
+    values = dict(before)
+    values["max_tokens"] = 100001
+
+    response = _post_settings(client, token, values)
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_overlay"
+    assert _values_from(client.get("/api/settings").json()) == before
+
+
 def test_settings_unknown_key_is_invalid_overlay(client: TestClient) -> None:
     """Проверяет отказ для лишнего ключа в полном наборе значений."""
     token = _csrf(client)
@@ -215,6 +240,9 @@ def test_settings_js_uses_text_content_only() -> None:
     assert script.status_code == 200
     assert "textContent" in script.text
     assert "innerHTML" not in script.text
+    assert "constrainField" in script.text
+    assert "rejectInvalidKey" in script.text
+    assert "Исправьте значения вне допустимого диапазона." in script.text
 
 
 def _runtime_store(client: TestClient) -> RuntimeStore:

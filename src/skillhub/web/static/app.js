@@ -8,6 +8,10 @@ const currentUrl = new URL(window.location.href);
 const hasTransientQuery =
   currentUrl.searchParams.has("reload") ||
   currentUrl.searchParams.has("notice");
+const themeToggle = document.querySelector("[data-theme-toggle]");
+const skillHelp = document.querySelector("#add-skill-dialog");
+const openSkillHelp = document.querySelector("[data-add-skill-open]");
+const closeSkillHelp = document.querySelector("[data-add-skill-close]");
 
 if (hasTransientQuery) {
   currentUrl.searchParams.delete("reload");
@@ -19,6 +23,62 @@ if (hasTransientQuery) {
 
 if (reloadNotice instanceof HTMLElement) {
   reloadNotice.focus();
+}
+
+applyStoredTheme();
+
+if (themeToggle instanceof HTMLInputElement) {
+  themeToggle.addEventListener("change", () => {
+    writeTheme(themeToggle.checked ? "dark" : "light");
+    syncDocumentTheme(themeToggle.checked);
+  });
+}
+
+if (skillHelp instanceof HTMLDialogElement) {
+  if (openSkillHelp instanceof HTMLButtonElement) {
+    openSkillHelp.addEventListener("click", () => {
+      if (typeof skillHelp.showPopover === "function") {
+        return;
+      }
+      skillHelp.showModal();
+    });
+  }
+  if (closeSkillHelp instanceof HTMLButtonElement) {
+    closeSkillHelp.addEventListener("click", () => {
+      if (typeof skillHelp.hidePopover === "function") {
+        return;
+      }
+      skillHelp.close();
+    });
+  }
+}
+
+function applyStoredTheme() {
+  const dark = readTheme() === "dark";
+  if (themeToggle instanceof HTMLInputElement) {
+    themeToggle.checked = dark;
+  }
+  syncDocumentTheme(dark);
+}
+
+function syncDocumentTheme(dark) {
+  document.documentElement.setAttribute("data-bs-theme", dark ? "dark" : "light");
+}
+
+function readTheme() {
+  try {
+    return localStorage.getItem("skillhub-theme") === "dark" ? "dark" : "light";
+  } catch {
+    return "light";
+  }
+}
+
+function writeTheme(theme) {
+  try {
+    localStorage.setItem("skillhub-theme", theme);
+  } catch {
+    return;
+  }
 }
 
 if (reloadForm instanceof HTMLFormElement) {

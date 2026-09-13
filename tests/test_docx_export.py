@@ -6,6 +6,7 @@ from pathlib import Path
 
 from docx import Document
 from docx.document import Document as DocumentObject
+from docx.oxml.ns import qn
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -35,6 +36,18 @@ def test_example_protocol_becomes_openable_docx_structure() -> None:
     ]
     assert "Дата: 2026-09-12" in _paragraph_texts(document)
     assert "Участники: Анна, Борис" in _paragraph_texts(document)
+    assert document.tables[0].style is not None
+    assert document.tables[0].style.name == "Table Grid"
+    borders = document.tables[0]._tbl.tblPr.find(qn("w:tblBorders"))  # noqa: SLF001
+    assert borders is not None
+    assert {child.tag.split("}")[-1] for child in borders} == {
+        "top",
+        "left",
+        "bottom",
+        "right",
+        "insideH",
+        "insideV",
+    }
     assert document.tables[0].rows[0].cells[0].text == "Задача"
     assert document.tables[0].rows[1].cells[0].text == "Проверить показатели продаж"
     assert document.tables[0].rows[1].cells[1].text == "Анна"

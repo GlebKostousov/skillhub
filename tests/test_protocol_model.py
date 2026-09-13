@@ -196,7 +196,7 @@ def test_facade_exports_parse_and_render() -> None:
 
 def test_facade_exports_clarification_seam() -> None:
     """Проверяет наличие шва уточнений на публичном фасаде."""
-    assert MAX_CLARIFICATIONS == 10
+    assert MAX_CLARIFICATIONS == 24
     assert "Clarification" in protocol_facade.__all__
     assert "build_clarifications" in protocol_facade.__all__
     assert "apply_answers" in protocol_facade.__all__

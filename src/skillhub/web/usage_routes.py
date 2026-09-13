@@ -1,6 +1,7 @@
 """Собирает страницу расходов и JSON-журнал без пользовательского текста."""
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from time import monotonic
 from typing import Annotated, TypedDict
 
@@ -144,7 +145,9 @@ class _UsageRoutes:
         return self._templates.TemplateResponse(
             request=request,
             name="usage.html",
-            context=dict(report),
+            context={
+                "entries": [_journal_row(item) for item in report["entries"]],
+            },
         )
 
     def _live_budget(self) -> int | None:
@@ -224,6 +227,77 @@ def _current(
         "cost_nanos": _sum_cost(matches),
         "currency": matches[0].currency,
     }
+
+
+_OPERATION_LABELS = {
+    "classify": "Классификация",
+    "generate": "Генерация",
+    "unspecified": "Не указана",  # noqa: RUF001
+}
+_SKILL_LABELS = {
+    "business-message": "Деловое сообщение",
+    "meeting-action-items": "Задачи встречи",
+    "meeting-protocol": "Протокол встречи",
+    "text-summary": "Краткое резюме",
+    "text-translation": "Перевод",
+}
+_STATUS_LABELS = {
+    "committed": "Зафиксировано",
+    "reserved": "Резерв",
+    "released": "Снят",
+}
+
+
+class JournalRow(TypedDict):
+    """Строка журнала с подписями для HTML-страницы."""
+
+    request_id: str
+    operation: str
+    skill: str
+    model: str
+    cost: str
+    status: str
+    created_at: str
+
+
+def _journal_row(entry: UsageEntry) -> JournalRow:
+    """Собирает человекочитаемую строку журнала для таблицы.
+
+    Args:
+        entry: публичная запись JSON-снимка.
+    """
+    skill = entry["skill"]
+    return {
+        "request_id": entry["request_id"],
+        "operation": _OPERATION_LABELS.get(entry["operation"], entry["operation"]),
+        "skill": _SKILL_LABELS.get(skill, skill) if skill else "—",
+        "model": entry["model"],
+        "cost": _format_usd(entry["cost_nanos"]),
+        "status": _STATUS_LABELS.get(entry["status"], entry["status"]),
+        "created_at": _format_created(entry["created_at"]),
+    }
+
+
+def _format_usd(cost_nanos: int) -> str:
+    """Форматирует нано-USD как сумму в долларах.
+
+    Args:
+        cost_nanos: стоимость в нано-долларах.
+    """
+    dollars = Decimal(cost_nanos) / Decimal(1_000_000_000)
+    if dollars == 0:
+        return "0 $"
+    text = f"{dollars:.9f}".rstrip("0").rstrip(".")
+    return f"{text.replace('.', ',')} $"
+
+
+def _format_created(value: str) -> str:
+    """Форматирует ISO-метку журнала для таблицы.
+
+    Args:
+        value: момент записи в ISO-8601.
+    """
+    return datetime.fromisoformat(value).strftime("%d.%m.%Y %H:%M")
 
 
 def _entry(event: UsageEvent) -> UsageEntry:

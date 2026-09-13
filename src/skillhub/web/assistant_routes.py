@@ -70,17 +70,24 @@ class _AssistantRoutes:
         Returns:
             Публичные поля исхода без тела скилла.
         """
-        intent, material = await validate_assistant_request(
+        intent, material, stage = await validate_assistant_request(
             request,
             self._csrf_token,
         )
         snapshot = self._registry.capture().snapshot
-        outcome = await run_in_threadpool(
-            self._assistant.run,
-            intent,
-            material,
-            snapshot,
-        )
+        if stage == "classify":
+            outcome = await run_in_threadpool(
+                self._assistant.classify,
+                intent,
+                snapshot,
+            )
+        else:
+            outcome = await run_in_threadpool(
+                self._assistant.run,
+                intent,
+                material,
+                snapshot,
+            )
         return {
             "selected_skill": outcome.selected_skill,
             "caption": outcome.caption,

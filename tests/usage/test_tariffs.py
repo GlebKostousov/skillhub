@@ -42,8 +42,8 @@ def test_valid_yaml_loads_deepseek_flash_limits_and_prices() -> None:
     tariff = catalog.model("deepseek-flash")
 
     assert tariff.model == "deepseek-flash"
-    assert tariff.max_tokens == 4096
-    assert tariff.timeout == 30
+    assert tariff.max_tokens == 100000
+    assert tariff.timeout == 60
     assert tariff.temperature == 0
     assert tariff.peak.cache_hit == Decimal("0.006")
     assert tariff.peak.cache_miss == Decimal("0.30")

@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 """Проверяет публичные HTTP-швы приложения."""
 
 import asyncio
@@ -173,12 +174,12 @@ def test_root_returns_accessible_server_rendered_page() -> None:
     assert "<main" in response.text
     assert '<main id="content" tabindex="-1"' in response.text
     assert accessibility.skip_links == [
-        ("#content", {"visually-hidden-focusable"}, "К содержимому")  # noqa: RUF001
+        ("#content", {"visually-hidden-focusable"}, "К содержимому")
     ]
     assert "content" in accessibility.focusable_targets
     assert "<h1>SkillHub</h1>" in response.text
     assert "Что нужно сделать" in response.text
-    assert "Материал для обработки" in response.text
+    assert "Текст или запись встречи" in response.text
     assert "Приложение работает" not in response.text
     assert "Сервис" not in response.text
     assert "https://" not in response.text
@@ -645,17 +646,20 @@ def _snapshot_metadata() -> tuple[SkillMetadata, ...]:
 
 
 def test_root_renders_readonly_assistant_window() -> None:
-    """Проверяет поля, бейдж и список режимов без ручного выбора."""
+    """Проверяет поля и бейдж без списка режимов и ручного выбора."""
     response = TestClient(create_app()).get("/")
     page = _parse_assistant_page(response.text)
 
     assert response.status_code == 200
     assert "Что нужно сделать" in page.labels
-    assert "Материал для обработки" in page.labels
-    assert page.mode_names == list(_SKILL_CAPTIONS)
-    assert page.mode_captions == list(_SKILL_CAPTIONS.values())
+    assert "Текст или запись встречи" in page.labels
+    assert "Доступные режимы" not in response.text
+    assert page.mode_names == []
+    assert page.mode_captions == []
     assert page.mode_controls == []
+    assert 'id="protocol-followup"' in response.text
     assert "data-assistant-badge" in response.text
+    assert "data-assistant-wait" in response.text
     assert "data-assistant-status" in response.text
     assert "data-assistant-result" in response.text
     assert "override" not in response.text.casefold()
@@ -670,6 +674,8 @@ def test_assistant_js_renders_untrusted_text_without_html_sink() -> None:
     assert "textContent" in response.text
     assert "innerHTML" not in response.text
     assert "localStorage" not in response.text
+    assert '"classify"' in response.text
+    assert "classified" in response.text
 
 
 def test_assistant_result_css_keeps_paragraphs_and_lists() -> None:
@@ -729,10 +735,43 @@ def test_assistant_demo_returns_none_without_generation() -> None:
         "caption": None,
         "outcome": "none",
         "text": None,
-        "message": "Подходящий режим не выбран.",
+        "message": (
+            "Не поняла задачу. Напишите коротко, что сделать — "
+            "например, собрать протокол встречи."
+        ),
     }
     assert len(gateway.requests) == 1
     assert material not in _sent_text(gateway.requests[0])
+
+
+def test_assistant_classify_stage_returns_caption_without_text() -> None:
+    """Проверяет, что стадия classify сразу отдаёт выбранный режим."""
+    gateway = _QueuedFakeGateway(json.dumps({"skill": "text-summary"}))
+    client = TestClient(create_app(llm_gateway=gateway))
+    token = _assistant_csrf(client)
+
+    response = client.post(
+        "/api/assistant",
+        json={
+            "intent": "Сделай по режиму",
+            "material": "MATERIAL-classify",
+            "stage": "classify",
+        },
+        headers={
+            "origin": "http://testserver",
+            "x-csrf-token": token,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "selected_skill": "text-summary",
+        "caption": _SKILL_CAPTIONS["text-summary"],
+        "outcome": "classified",
+        "text": None,
+        "message": "Режим выбран.",
+    }
+    assert len(gateway.requests) == 1
 
 
 def test_assistant_meeting_protocol_returns_parsed_markdown() -> None:
@@ -751,7 +790,8 @@ def test_assistant_meeting_protocol_returns_parsed_markdown() -> None:
 
     response = _post_assistant(client, token, "Составь протокол совещания", material)
 
-    assert "Протокол встречи" in page.mode_captions
+    assert "Доступные режимы" not in page.mode_captions
+    assert 'id="protocol-followup"' in client.get("/").text
     assert response.status_code == 200
     payload = response.json()
     assert payload["selected_skill"] == "meeting-protocol"
@@ -927,7 +967,7 @@ def test_assistant_without_key_returns_generation_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Проверяет честный исход при старте без ключа поставщика."""
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "")
     client = TestClient(create_app())
     token = _assistant_csrf(client)
 
@@ -992,11 +1032,13 @@ def test_navbar_includes_settings_and_keeps_existing_links() -> None:
     home = TestClient(create_app()).get("/")
     settings = TestClient(create_app()).get("/settings")
 
-    assert '<a href="/">Главная</a>' in home.text
-    assert '<a href="/skills">Скиллы</a>' in home.text
-    assert '<a href="/protocol">Протокол</a>' in home.text
-    assert '<a href="/usage">Расходы</a>' in home.text
-    assert '<a href="/settings">Настройки</a>' in home.text
-    assert 'aria-current="page"' not in home.text
+    assert "Главная" in home.text
+    assert 'href="/skills"' in home.text
+    assert "Скиллы" in home.text
+    assert 'href="/protocol"' not in home.text
+    assert 'href="/usage"' in home.text
+    assert "Расходы" in home.text
+    assert 'href="/settings"' in home.text
+    assert "Настройки" in home.text
     assert '<a href="/settings" aria-current="page">Настройки</a>' in settings.text
-    assert '<a href="/usage">Расходы</a>' in settings.text
+    assert 'href="/usage"' in settings.text

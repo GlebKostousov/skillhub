@@ -26,6 +26,7 @@ from skillhub.protocol._errors import (
 from skillhub.protocol._finalize import FinalizedProtocol, finalize
 from skillhub.protocol._parser import parse
 from skillhub.protocol._renderer import render
+from skillhub.protocol._revise import revise
 from skillhub.protocol._verify import MAX_VERIFY_CHARS, UnconfirmedClaim, verify
 from skillhub.protocol.models import Clarification, Protocol, ProtocolTask
 
@@ -57,5 +58,6 @@ __all__ = [
     "finalize",
     "parse",
     "render",
+    "revise",
     "verify",
 ]

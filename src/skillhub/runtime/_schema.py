@@ -14,6 +14,8 @@ from pydantic import (
 )
 
 from skillhub.runtime._constants import (
+    MAX_DAILY_BUDGET,
+    MAX_MAX_TOKENS,
     MAX_PENALTY,
     MAX_STOP_ITEMS,
     MAX_STOP_LENGTH,
@@ -53,10 +55,10 @@ class _OverlayModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
     model: str
-    max_tokens: int = Field(ge=MIN_MAX_TOKENS)
+    max_tokens: int = Field(ge=MIN_MAX_TOKENS, le=MAX_MAX_TOKENS)
     temperature: int | float = Field(ge=MIN_TEMPERATURE, le=MAX_TEMPERATURE)
     timeout: float = Field(ge=MIN_TIMEOUT, le=MAX_TIMEOUT)
-    stream: Literal[False]
+    stream: Literal[False] = False
     thinking: Literal["enabled", "disabled"]
     reasoning_effort: Literal["low", "high", "max"]
     top_p: float = Field(ge=MIN_TOP_P, le=MAX_TOP_P)
@@ -64,7 +66,7 @@ class _OverlayModel(BaseModel):
     presence_penalty: int | float = Field(ge=MIN_PENALTY, le=MAX_PENALTY)
     stop: tuple[str, ...] = Field(max_length=MAX_STOP_ITEMS)
     response_format: Literal["text", "json_object"]
-    daily_budget_nanos: int | None = Field(ge=MIN_DAILY_BUDGET)
+    daily_budget_nanos: int | None = Field(ge=MIN_DAILY_BUDGET, le=MAX_DAILY_BUDGET)
 
     @field_validator("stop", mode="before")
     @classmethod
@@ -110,7 +112,8 @@ class _OverlayModel(BaseModel):
         Returns:
             Та же модель после проверки потолка.
         """
-        if self.max_tokens > _limits_from(info)[self.model]:
+        ceiling = min(MAX_MAX_TOKENS, _limits_from(info)[self.model])
+        if self.max_tokens > ceiling:
             raise ValueError(_INVALID_MAX_TOKENS)
         return self
 
