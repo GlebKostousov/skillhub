@@ -58,9 +58,22 @@ def _is_blank(intent: str) -> bool:
 
 def _resolve(text: str, names: frozenset[str]) -> Classification:
     candidate = parse_skill_name(text)
-    if candidate is None or candidate not in names:
+    if candidate is None:
         return _none()
-    return _selected(candidate)
+    matched = _match_allowlist(candidate, names)
+    if matched is None:
+        return _none()
+    return _selected(matched)
+
+
+def _match_allowlist(candidate: str, names: frozenset[str]) -> str | None:
+    if candidate in names:
+        return candidate
+    folded = candidate.casefold()
+    for name in names:
+        if name.casefold() == folded:
+            return name
+    return None
 
 
 def _none() -> Classification:

@@ -1,14 +1,15 @@
-"""Собирает страницу черновика, уточнения и выгрузку протокола в Word."""
+"""Собирает уточнения и выгрузку протокола в Word без отдельной страницы."""
 
 import json
 import secrets
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import cast
 
 import structlog
 from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
+from starlette.concurrency import run_in_threadpool
 from starlette.responses import Response
 
 from skillhub.core import SkillHubError
@@ -36,6 +37,11 @@ _JSON_TYPE = "application/json"
 _DRAFT_INSTRUCTION = "Собери нормативный протокол встречи."
 _DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 _DOCX_DISPOSITION = 'attachment; filename="protocol.docx"'
+
+type ProtocolReviser = Callable[
+    [Protocol, Sequence[Mapping[str, object]], str],
+    FinalizedProtocol,
+]
 
 
 class GenerationUnavailableError(SkillHubError):
@@ -65,35 +71,27 @@ class ProtocolInvalidRequestError(SkillHubError):
 class _ProtocolRoutes:
     """Связывает тонкие HTTP-обработчики протокола с зависимостями."""
 
-    __slots__ = ("_csrf_token", "_generator", "_templates")
+    __slots__ = ("_csrf_token", "_generator", "_reviser")
 
     def __init__(
         self,
         templates: Jinja2Templates,
         csrf_token: str,
         generator: ProtocolTextGenerator | None,
+        reviser: ProtocolReviser | None,
     ) -> None:
         """Сохраняет зависимости обработчиков протокола.
 
         Args:
-            templates: шаблоны серверных страниц.
+            templates: шаблоны серверных страниц, страница больше не отдаётся.
             csrf_token: секрет CSRF текущего экземпляра приложения.
             generator: порт генерации или отсутствие генерации.
+            reviser: повторная сборка черновика с ответами или её отсутствие.
         """
-        self._templates = templates
+        del templates
         self._csrf_token = csrf_token
         self._generator = generator
-
-    def page(self, request: Request) -> Response:
-        """Показывает страницу черновика и выгрузки протокола."""
-        return self._templates.TemplateResponse(
-            request=request,
-            name="protocol.html",
-            context={
-                "csrf_token": self._csrf_token,
-                "generation_available": self._generator is not None,
-            },
-        )
+        self._reviser = reviser
 
     async def draft(self, request: Request) -> Response:
         """Собирает черновик протокола из транскрипции."""
@@ -152,10 +150,29 @@ class _ProtocolRoutes:
             return _parse_error_response(exc)
         return JSONResponse(content=_finalize_payload(result))
 
+    async def revise(self, request: Request) -> Response:
+        """Переписывает протокол из первого черновика и закрытых уточнений."""
+        payload = await self._read_json(request)
+        text = _string_field(payload, "text")
+        material = _string_field(payload, "material")
+        answers = _answers_field(payload)
+        reviser = self._require_reviser()
+        try:
+            protocol = parse(text)
+            result = await run_in_threadpool(reviser, protocol, answers, material)
+        except ProtocolParseError as exc:
+            return _parse_error_response(exc)
+        return JSONResponse(content=_finalize_payload(result))
+
     def _require_generator(self) -> ProtocolTextGenerator:
         if self._generator is None:
             raise GenerationUnavailableError
         return self._generator
+
+    def _require_reviser(self) -> ProtocolReviser:
+        if self._reviser is None:
+            raise GenerationUnavailableError
+        return self._reviser
 
     async def _read_json(self, request: Request) -> dict[str, object]:
         _require_same_origin(request)
@@ -171,30 +188,25 @@ def create_protocol_router(
     *,
     csrf_token: str,
     generator: ProtocolTextGenerator | None,
+    reviser: ProtocolReviser | None = None,
 ) -> APIRouter:
-    """Собирает маршрутизатор страницы и выгрузки протокола.
+    """Собирает маршрутизатор уточнений и выгрузки протокола.
 
     Args:
-        templates: шаблоны серверных страниц.
+        templates: шаблоны серверных страниц, страница больше не отдаётся.
         csrf_token: секрет CSRF из безопасных для URL символов ASCII.
         generator: порт генерации или ``None``, если генерация недоступна.
+        reviser: повторная сборка черновика с ответами или ``None``.
 
     Returns:
-        Маршрутизатор с страницей черновика и изменяющими швами.
+        Маршрутизатор изменяющих швов протокола без отдельной страницы.
 
     Raises:
         ValueError: настроенный секрет CSRF не соответствует контракту.
     """
     validate_csrf_token(csrf_token)
     router = APIRouter()
-    routes = _ProtocolRoutes(templates, csrf_token, generator)
-    router.add_api_route(
-        "/protocol",
-        routes.page,
-        methods=["GET"],
-        response_class=HTMLResponse,
-        include_in_schema=False,
-    )
+    routes = _ProtocolRoutes(templates, csrf_token, generator, reviser)
     router.add_api_route(
         "/protocol/draft",
         routes.draft,
@@ -222,6 +234,12 @@ def create_protocol_router(
     router.add_api_route(
         "/protocol/finalize",
         routes.finalize,
+        methods=["POST"],
+        response_model=None,
+    )
+    router.add_api_route(
+        "/protocol/revise",
+        routes.revise,
         methods=["POST"],
         response_model=None,
     )

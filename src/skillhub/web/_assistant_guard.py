@@ -61,7 +61,7 @@ def validate_csrf_token(token: str) -> None:
 async def validate_assistant_request(
     request: Request,
     expected_token: str,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     """Проверяет источник, размер JSON и секретный токен ассистента.
 
     Args:
@@ -69,7 +69,7 @@ async def validate_assistant_request(
         expected_token: случайный секрет текущего экземпляра приложения.
 
     Returns:
-        Намерение и материал из проверенного тела.
+        Намерение, материал и стадия обращения.
 
     Raises:
         AssistantForbiddenError: источник или токен не прошёл строгую проверку.
@@ -85,6 +85,7 @@ async def validate_assistant_request(
     return (
         _require_text_field(payload, "intent"),
         _require_text_field(payload, "material"),
+        _optional_stage(payload),
     )
 
 
@@ -214,6 +215,15 @@ def _optional_token_field(payload: dict[str, object]) -> str | None:
         return None
     value = payload["csrf_token"]
     return value if type(value) is str else None
+
+
+def _optional_stage(payload: dict[str, object]) -> str:
+    if "stage" not in payload:
+        return "generate"
+    value = payload["stage"]
+    if value not in {"classify", "generate"}:
+        raise AssistantRequestError
+    return value
 
 
 def _require_text_field(payload: dict[str, object], name: str) -> str:

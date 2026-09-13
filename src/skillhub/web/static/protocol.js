@@ -1,15 +1,16 @@
 "use strict";
 
+(function () {
 const csrfInput = document.querySelector("#protocol-csrf");
 const transcriptArea = document.querySelector("#protocol-transcript");
 const markdownArea = document.querySelector("#protocol-markdown");
 const draftButton = document.querySelector("#protocol-draft-button");
 const downloadButton = document.querySelector("#protocol-download-button");
-const clarificationsButton = document.querySelector("#protocol-clarifications-button");
 const finalizeButton = document.querySelector("#protocol-finalize-button");
-const clarificationsWrap = document.querySelector("#protocol-clarifications-wrap");
+const reviseButton = document.querySelector("#protocol-revise-button");
+const clarificationsList = document.querySelector("#protocol-clarifications-list");
 const clarificationsEmpty = document.querySelector("#protocol-clarifications-empty");
-const clarificationsBody = document.querySelector("#protocol-clarifications-body");
+const clarificationsLoading = document.querySelector("#protocol-clarifications-loading");
 const unconfirmedNode = document.querySelector("#protocol-unconfirmed");
 const unconfirmedList = document.querySelector("#protocol-unconfirmed-list");
 const statusNode = document.querySelector("#protocol-status");
@@ -18,11 +19,11 @@ const errorMessageNode = document.querySelector("#protocol-error-message");
 const errorLineNode = document.querySelector("#protocol-error-line");
 const errorExpectedNode = document.querySelector("#protocol-error-expected");
 const errorGotNode = document.querySelector("#protocol-error-got");
-const CONNECTION_ERROR = "Запрос не выполнен. Проверьте соединение и повторите.";
-const EMPTY_ANSWER_ERROR = "Ответ не должен быть пустым.";
+const CONNECTION_ERROR = "Не получилось связаться. Проверьте сеть и попробуйте ещё раз.";
+const EMPTY_ANSWER_ERROR = "Напишите ответ или пропустите вопрос.";
 const STATUS_LABELS = {
   pending: "Ожидает",
-  answered: "Отвечено",
+  answered: "Принято",
   skipped: "Пропущено",
 };
 const draftAvailable =
@@ -31,6 +32,8 @@ const rowMemory = new Map();
 let lastItems = [];
 let tableLoaded = false;
 let baseText = "";
+let requestBusy = false;
+let downloadBusy = false;
 
 if (draftButton instanceof HTMLButtonElement) {
   draftButton.addEventListener("click", () => {
@@ -44,16 +47,40 @@ if (downloadButton instanceof HTMLButtonElement) {
   });
 }
 
-if (clarificationsButton instanceof HTMLButtonElement) {
-  clarificationsButton.addEventListener("click", () => {
-    void submitClarifications();
-  });
-}
-
 if (finalizeButton instanceof HTMLButtonElement) {
   finalizeButton.addEventListener("click", () => {
     void submitFinalize();
   });
+}
+
+if (reviseButton instanceof HTMLButtonElement) {
+  reviseButton.addEventListener("click", () => {
+    void submitRevise();
+  });
+}
+
+window.SkillHubProtocol = {
+  startFromDraft: startFromDraft,
+};
+
+function startFromDraft(text, transcript) {
+  const panel = document.querySelector("#protocol-followup");
+  if (panel instanceof HTMLElement) {
+    panel.classList.remove("d-none");
+  }
+  toggleHidden(clarificationsLoading, false);
+  toggleHidden(clarificationsList, true);
+  toggleHidden(clarificationsEmpty, true);
+  if (markdownArea instanceof HTMLTextAreaElement && typeof text === "string") {
+    markdownArea.value = text;
+  }
+  if (
+    transcriptArea instanceof HTMLTextAreaElement &&
+    typeof transcript === "string"
+  ) {
+    transcriptArea.value = transcript;
+  }
+  return submitClarifications();
 }
 
 async function submitDraft() {
@@ -83,8 +110,17 @@ async function submitDraft() {
 }
 
 async function submitDownload() {
+  if (downloadBusy) {
+    return;
+  }
+  if (fieldValue(markdownArea) === "") {
+    showError({ error: { message: "Сначала нужен готовый протокол." } });
+    return;
+  }
   clearMessages();
-  setBusy(true, "Готовится Word…");
+  downloadBusy = true;
+  syncButtons();
+  setText(statusNode, "Собираю файл Word…");
   try {
     const response = await postJson("/protocol/docx", {
       csrf_token: csrfValue(),
@@ -95,36 +131,66 @@ async function submitDownload() {
       return;
     }
     await saveDocx(response);
-    setText(statusNode, "Файл protocol.docx сохранён.");
+    setText(statusNode, "Файл Word сохранён.");
   } catch {
     showConnectionError();
   } finally {
-    setBusy(false);
+    downloadBusy = false;
+    syncButtons();
   }
 }
 
 function setBusy(busy, status) {
-  if (draftButton instanceof HTMLButtonElement) {
-    draftButton.disabled = busy || !draftAvailable;
-  }
-  if (downloadButton instanceof HTMLButtonElement) {
-    downloadButton.disabled = busy;
-  }
-  if (clarificationsButton instanceof HTMLButtonElement) {
-    clarificationsButton.disabled = busy;
-  }
-  if (finalizeButton instanceof HTMLButtonElement) {
-    finalizeButton.disabled = busy;
-  }
+  requestBusy = busy;
   applyRowBusy(busy);
+  syncButtons();
+  const panel = document.querySelector("#protocol-followup");
+  if (panel instanceof HTMLElement) {
+    panel.toggleAttribute("data-busy", busy);
+  }
   if (typeof status === "string") {
     setText(statusNode, status);
   }
 }
 
+function syncButtons() {
+  if (draftButton instanceof HTMLButtonElement) {
+    draftButton.disabled = requestBusy || !draftAvailable;
+  }
+  if (downloadButton instanceof HTMLButtonElement) {
+    downloadButton.disabled = downloadBusy;
+  }
+  if (finalizeButton instanceof HTMLButtonElement) {
+    finalizeButton.disabled = requestBusy || downloadBusy || !allResolved();
+  }
+  if (reviseButton instanceof HTMLButtonElement) {
+    reviseButton.disabled = requestBusy || downloadBusy || !allResolved();
+  }
+}
+
+function allResolved() {
+  if (!tableLoaded || lastItems.length === 0) {
+    return false;
+  }
+  for (const item of lastItems) {
+    if (isLocked(item.status) && item.status === "skipped") {
+      continue;
+    }
+    const input = rowInput(item.id);
+    if (input instanceof HTMLInputElement && input.value.trim() !== "") {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
 async function submitFinalize() {
+  if (!allResolved()) {
+    return;
+  }
   clearMessages();
-  setBusy(true, "Формируется итоговый протокол…");
+  setBusy(true, "Записываю ответы…");
   try {
     const response = await postJson("/protocol/finalize", {
       csrf_token: csrfValue(),
@@ -139,7 +205,43 @@ async function submitFinalize() {
     }
     writeMarkdown(payload);
     showUnconfirmed(asUnconfirmed(payload));
-    setText(statusNode, "Итоговый протокол сформирован.");
+    rowMemory.clear();
+    lastItems = [];
+    tableLoaded = true;
+    renderClarifications(lastItems);
+    setText(statusNode, "Готово, ответы в протоколе.");
+  } catch {
+    showConnectionError();
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function submitRevise() {
+  if (!allResolved()) {
+    return;
+  }
+  clearMessages();
+  setBusy(true, "Собираю протокол заново…");
+  try {
+    const response = await postJson("/protocol/revise", {
+      csrf_token: csrfValue(),
+      text: tableLoaded ? baseText : fieldValue(markdownArea),
+      answers: finalizeAnswers(),
+      material: fieldValue(transcriptArea),
+    });
+    const payload = await readJson(response);
+    if (!response.ok) {
+      showError(payload);
+      return;
+    }
+    writeMarkdown(payload);
+    showUnconfirmed(asUnconfirmed(payload));
+    rowMemory.clear();
+    lastItems = [];
+    tableLoaded = true;
+    renderClarifications(lastItems);
+    setText(statusNode, "Готово. Протокол переписан с вашими ответами.");
   } catch {
     showConnectionError();
   } finally {
@@ -149,15 +251,15 @@ async function submitFinalize() {
 
 function finalizeAnswers() {
   const answers = [];
-  for (const decision of remainingDecisions()) {
-    const item = {
-      id: decision.item.id,
-      action: decision.status === "skipped" ? "skip" : "answer",
-    };
-    if (decision.status === "answered") {
-      item.value = decision.value;
+  for (const item of lastItems) {
+    const memory = rowMemory.get(item.id);
+    if (memory && memory.status === "skipped") {
+      answers.push({ id: item.id, action: "skip" });
+      continue;
     }
-    answers.push(item);
+    const input = rowInput(item.id);
+    const value = input instanceof HTMLInputElement ? input.value.trim() : "";
+    answers.push({ id: item.id, action: "answer", value });
   }
   return answers;
 }
@@ -176,34 +278,26 @@ function asUnconfirmed(payload) {
 }
 
 function showUnconfirmed(items) {
-  if (!(unconfirmedList instanceof HTMLElement)) {
-    return;
-  }
-  while (unconfirmedList.firstChild) {
-    unconfirmedList.removeChild(unconfirmedList.firstChild);
-  }
-  for (const item of items) {
-    const entry = document.createElement("li");
-    entry.textContent = `${item.target}: ${item.reason}`;
-    unconfirmedList.appendChild(entry);
-  }
   toggleHidden(unconfirmedNode, items.length === 0);
 }
 
 async function submitClarifications() {
   clearMessages();
-  setBusy(true, "Собираются уточнения…");
+  setBusy(true, "Собираю вопросы…");
   try {
     const loaded = await refreshClarifications();
     if (loaded) {
       setText(
         statusNode,
-        lastItems.length === 0 ? "Важных пропусков нет." : "Уточнения собраны.",
+        lastItems.length === 0
+          ? "Похоже, всё уже на месте. Можно сразу сохранить в Word."
+          : "Ответьте или пропустите вопрос, затем запишите ответы или соберите протокол заново.",
       );
     }
   } catch {
     showConnectionError();
   } finally {
+    toggleHidden(clarificationsLoading, true);
     setBusy(false);
   }
 }
@@ -226,41 +320,14 @@ async function refreshClarifications() {
   return true;
 }
 
-async function submitAnswer(item, action, input) {
-  const value = input instanceof HTMLInputElement ? input.value : "";
-  if (action === "answer" && value.trim() === "") {
-    showRowError(item.id, EMPTY_ANSWER_ERROR);
-    return;
-  }
+function skipAnswer(item) {
+  persistDrafts();
   clearMessages();
   clearRowError(item.id);
-  setBusy(true, action === "skip" ? "Строка пропускается…" : "Ответ отправляется…");
-  try {
-    const body = {
-      csrf_token: csrfValue(),
-      text: fieldValue(markdownArea),
-      id: item.id,
-      action,
-    };
-    if (action === "answer") {
-      body.value = value;
-    }
-    const response = await postJson("/protocol/answer", body);
-    const payload = await readJson(response);
-    if (!response.ok) {
-      showError(payload);
-      return;
-    }
-    rememberDecision(item, action, value);
-    writeMarkdown(payload);
-    lastItems = mergeRows(asClarifications(payload));
-    renderClarifications(lastItems);
-    setText(statusNode, action === "skip" ? "Строка пропущена." : "Ответ принят.");
-  } catch {
-    showConnectionError();
-  } finally {
-    setBusy(false);
-  }
+  rememberDecision(item, "skip", "");
+  lastItems = mergeRows(lastItems);
+  renderClarifications(lastItems);
+  setText(statusNode, "Этот вопрос пропущен. Остальные можно заполнить и записать.");
 }
 
 function rememberDecision(item, action, value) {
@@ -276,76 +343,49 @@ function rememberDecision(item, action, value) {
   });
 }
 
-async function cancelChoice(id) {
-  const memory = rowMemory.get(id);
-  if (!memory) {
+function cancelChoice(id) {
+  if (!rowMemory.has(id)) {
     return;
   }
+  persistDrafts();
   rowMemory.delete(id);
   clearMessages();
-  setBusy(true, "Выбор отменяется…");
-  try {
-    const remaining = remainingDecisions();
-    if (remaining.length === 0) {
-      writeMarkdown({ text: baseText });
-      lastItems = pendingItems(lastItems);
-      renderClarifications(lastItems);
-      setText(statusNode, "Выбор отменён.");
-      return;
+  lastItems = mergeRows(lastItems);
+  renderClarifications(lastItems);
+  setText(statusNode, "Вопрос снова в списке.");
+}
+
+function persistDrafts() {
+  for (const item of lastItems) {
+    if (isLocked(item.status)) {
+      continue;
     }
-    const rebuilt = await replayRemaining(baseText, remaining);
-    if (!rebuilt) {
-      rowMemory.set(id, memory);
-      return;
+    const input = rowInput(item.id);
+    if (!(input instanceof HTMLInputElement)) {
+      continue;
     }
-    writeMarkdown(rebuilt);
-    lastItems = mergeRows(asClarifications(rebuilt));
-    renderClarifications(lastItems);
-    setText(statusNode, "Выбор отменён.");
-  } catch {
-    rowMemory.set(id, memory);
-    showConnectionError();
-  } finally {
-    setBusy(false);
+    rememberDraft(item, input.value);
   }
 }
 
-function pendingItems(items) {
-  const rows = [];
-  for (const item of items) {
-    rows.push({
+function rememberDraft(item, value) {
+  if (value.trim() === "") {
+    const memory = rowMemory.get(item.id);
+    if (memory && memory.status === "pending") {
+      rowMemory.delete(item.id);
+    }
+    return;
+  }
+  rowMemory.set(item.id, {
+    item: {
       id: item.id,
       target: item.target,
       reason: item.reason,
       hint: item.hint,
-      status: "pending",
-    });
-  }
-  return rows;
-}
-
-async function replayRemaining(text, remaining) {
-  let current = text;
-  let payload = { text: current, clarifications: [] };
-  for (const decision of remaining) {
-    const body = {
-      csrf_token: csrfValue(),
-      text: current,
-      id: decision.item.id,
-      action: decision.status === "skipped" ? "skip" : "answer",
-    };
-    if (decision.status === "answered") {
-      body.value = decision.value;
-    }
-    const response = await postJson("/protocol/answer", body);
-    payload = await readJson(response);
-    if (!response.ok) {
-      showError(payload);
-      return null;
-    }
-    current = textField(payload, "text");
-  }
-  return payload;
+    },
+    status: "pending",
+    value,
+  });
 }
 
 function remainingDecisions() {
@@ -374,7 +414,7 @@ function mergeRows(serverItems) {
   const ids = [];
   collectIds(ids, lastItems);
   collectIds(ids, serverItems);
-  collectIds(ids, Array.from(rowMemory.keys()).map((id) => ({ id })));
+  collectIds(ids, Array.from(rowMemory.keys()).map((key) => ({ id: key })));
   const rows = [];
   for (const id of ids) {
     const memory = rowMemory.get(id);
@@ -390,7 +430,13 @@ function mergeRows(serverItems) {
     }
     const server = serverById.get(id);
     if (server) {
-      rows.push(server);
+      rows.push({
+        id: server.id,
+        target: server.target,
+        reason: server.reason,
+        hint: server.hint,
+        status: "pending",
+      });
     }
   }
   return rows;
@@ -418,43 +464,74 @@ function asClarifications(payload) {
 }
 
 function renderClarifications(items) {
-  if (!(clarificationsBody instanceof HTMLTableSectionElement)) {
+  if (!(clarificationsList instanceof HTMLElement)) {
     return;
   }
-  while (clarificationsBody.firstChild) {
-    clarificationsBody.removeChild(clarificationsBody.firstChild);
+  toggleHidden(clarificationsLoading, true);
+  while (clarificationsList.firstChild) {
+    clarificationsList.removeChild(clarificationsList.firstChild);
   }
   const hasItems = items.length > 0;
-  toggleHidden(clarificationsWrap, !hasItems);
+  toggleHidden(clarificationsList, !hasItems);
   toggleHidden(clarificationsEmpty, !tableLoaded || hasItems);
   for (const item of items) {
-    clarificationsBody.appendChild(buildRow(item));
+    clarificationsList.appendChild(buildGap(item));
   }
+  syncButtons();
 }
 
-function buildRow(item) {
-  const row = document.createElement("tr");
-  row.dataset.id = item.id;
-  row.dataset.status = item.status;
-  row.appendChild(textCell(item.reason));
-  row.appendChild(answerCell(item));
-  row.appendChild(actionsCell(item));
-  row.appendChild(statusCell(item));
-  return row;
+function buildGap(item) {
+  const card = document.createElement("article");
+  card.className = "protocol-gap";
+  card.dataset.id = item.id;
+  card.dataset.status = item.status;
+  const title = document.createElement("h3");
+  title.className = "h6 mb-1";
+  title.textContent = gapTitle(item);
+  const reason = document.createElement("p");
+  reason.className = "protocol-gap-reason text-body-secondary mb-3";
+  reason.textContent = typeof item.reason === "string" ? item.reason : "";
+  card.appendChild(title);
+  card.appendChild(reason);
+  card.appendChild(answerBlock(item));
+  card.appendChild(actionsBlock(item));
+  return card;
 }
 
-function textCell(value) {
-  const cell = document.createElement("td");
-  cell.textContent = typeof value === "string" ? value : "";
-  return cell;
+function gapInputType(item) {
+  const target = typeof item.target === "string" ? item.target : "";
+  if (target === "date" || target.endsWith(":due")) {
+    return "date";
+  }
+  return "text";
 }
 
-function answerCell(item) {
-  const cell = document.createElement("td");
+function gapTitle(item) {
+  const target = typeof item.target === "string" ? item.target : "";
+  if (target === "date") {
+    return "Дата встречи";
+  }
+  if (target === "participants") {
+    return "Участники";
+  }
+  if (target.endsWith(":assignee")) {
+    return "Ответственный";
+  }
+  if (target.endsWith(":due")) {
+    return "Срок";
+  }
+  if (target.startsWith("question:")) {
+    return "Открытый вопрос";
+  }
+  return typeof item.reason === "string" ? item.reason : "Вопрос";
+}
+
+function answerBlock(item) {
+  const wrap = document.createElement("div");
   const input = document.createElement("input");
-  input.type = "text";
+  input.type = gapInputType(item);
   input.className = "form-control";
-  input.setAttribute("aria-label", "Ответ");
+  input.setAttribute("aria-label", gapTitle(item));
   if (typeof item.hint === "string") {
     input.placeholder = item.hint;
   }
@@ -462,51 +539,42 @@ function answerCell(item) {
   if (memory && typeof memory.value === "string") {
     input.value = memory.value;
   }
-  input.disabled = isLocked(item.status);
+  input.disabled = requestBusy || isLocked(item.status);
+  input.addEventListener("input", () => {
+    clearRowError(item.id);
+    rememberDraft(item, input.value);
+    syncButtons();
+  });
   const error = document.createElement("p");
   error.className = "text-danger small mb-0 mt-1 d-none";
   error.dataset.role = "row-error";
-  cell.appendChild(input);
-  cell.appendChild(error);
-  return cell;
+  wrap.appendChild(input);
+  wrap.appendChild(error);
+  return wrap;
 }
 
-function actionsCell(item) {
-  const cell = document.createElement("td");
+function actionsBlock(item) {
+  const cell = document.createElement("div");
+  cell.className = "protocol-gap-actions";
   const locked = isLocked(item.status);
-  const send = actionButton("Отправить", "send", "btn btn-sm btn-primary me-2");
-  const skip = actionButton(
-    "Пропустить",
-    "skip",
-    "btn btn-sm btn-outline-secondary me-2",
-  );
+  const skip = actionButton("Пропустить", "skip", "btn btn-outline-secondary");
   const cancel = actionButton(
-    "Отменить выбор",
+    "Вернуть вопрос",
     "cancel",
-    "btn btn-sm btn-outline-primary",
+    "btn btn-outline-primary",
   );
-  send.disabled = locked;
-  skip.disabled = locked;
+  skip.disabled = requestBusy || locked;
+  skip.hidden = locked;
   cancel.hidden = !locked;
-  send.addEventListener("click", () => {
-    void submitAnswer(item, "answer", rowInput(item.id));
-  });
+  cancel.disabled = requestBusy;
   skip.addEventListener("click", () => {
-    void submitAnswer(item, "skip", rowInput(item.id));
+    skipAnswer(item);
   });
   cancel.addEventListener("click", () => {
-    void cancelChoice(item.id);
+    cancelChoice(item.id);
   });
-  cell.appendChild(send);
   cell.appendChild(skip);
   cell.appendChild(cancel);
-  return cell;
-}
-
-function statusCell(item) {
-  const cell = document.createElement("td");
-  const label = STATUS_LABELS[item.status];
-  cell.textContent = typeof label === "string" ? label : STATUS_LABELS.pending;
   return cell;
 }
 
@@ -555,10 +623,10 @@ function rowError(id) {
 }
 
 function findRow(id) {
-  if (!(clarificationsBody instanceof HTMLElement)) {
+  if (!(clarificationsList instanceof HTMLElement)) {
     return null;
   }
-  const rows = clarificationsBody.querySelectorAll("tr");
+  const rows = clarificationsList.querySelectorAll("[data-id]");
   for (const row of rows) {
     if (row instanceof HTMLElement && row.dataset.id === id) {
       return row;
@@ -568,10 +636,10 @@ function findRow(id) {
 }
 
 function applyRowBusy(busy) {
-  if (!(clarificationsBody instanceof HTMLElement)) {
+  if (!(clarificationsList instanceof HTMLElement)) {
     return;
   }
-  const rows = clarificationsBody.querySelectorAll("tr");
+  const rows = clarificationsList.querySelectorAll("[data-id]");
   for (const row of rows) {
     if (!(row instanceof HTMLElement)) {
       continue;
@@ -627,9 +695,14 @@ async function saveDocx(response) {
   const link = document.createElement("a");
   link.href = url;
   link.download = "protocol.docx";
-  link.textContent = "protocol.docx";
+  link.rel = "noopener";
+  link.style.display = "none";
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+    link.remove();
+  }, 2000);
 }
 
 function writeMarkdown(payload) {
@@ -645,6 +718,7 @@ function showConnectionError() {
 
 function showError(payload) {
   const details = formatError(payload && payload.error);
+  toggleHidden(clarificationsLoading, true);
   setText(statusNode, "");
   setText(errorMessageNode, details.message);
   setDetail(errorLineNode, details.line);
@@ -652,12 +726,13 @@ function showError(payload) {
   setDetail(errorGotNode, details.got);
   if (errorNode instanceof HTMLElement) {
     errorNode.classList.remove("d-none");
+    errorNode.scrollIntoView({ block: "nearest" });
   }
 }
 
 function formatError(error) {
   if (!error || typeof error.message !== "string") {
-    return { message: "Запрос не выполнен." };
+    return { message: "Не получилось выполнить запрос." };
   }
   return {
     message: error.message,
@@ -682,8 +757,12 @@ function formatLabeled(label, value) {
 }
 
 function csrfValue() {
-  if (csrfInput instanceof HTMLInputElement) {
+  if (csrfInput instanceof HTMLInputElement && csrfInput.value !== "") {
     return csrfInput.value;
+  }
+  const assistant = document.querySelector("[data-assistant-form] [name='csrf_token']");
+  if (assistant instanceof HTMLInputElement) {
+    return assistant.value;
   }
   return "";
 }
@@ -726,3 +805,4 @@ function clearMessages() {
   }
   toggleHidden(unconfirmedNode, true);
 }
+})();

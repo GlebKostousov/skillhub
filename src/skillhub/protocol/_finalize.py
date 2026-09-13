@@ -48,5 +48,12 @@ def finalize(
         ProtocolParseError: круговой разбор не принял собранный текст.
     """
     applied = apply_answers(protocol, answers, require_resolved=True)
-    unconfirmed = verify(applied, material)
+    answered = {
+        str(item["id"])
+        for item in answers
+        if isinstance(item, Mapping) and item.get("action") == "answer"
+    }
+    unconfirmed = tuple(
+        claim for claim in verify(applied, material) if claim.target not in answered
+    )
     return FinalizedProtocol(protocol=parse(render(applied)), unconfirmed=unconfirmed)

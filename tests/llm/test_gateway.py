@@ -1,7 +1,8 @@
 """Проверяет публичный фасад шлюза модели."""
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from pathlib import Path
 
 import httpx
 import pytest
@@ -19,6 +20,7 @@ from skillhub.llm import (
     LlmUsage,
     ProviderError,
 )
+from skillhub.runtime._schema import seed_values
 
 _PROVIDER_VALUE = "sk-test-provider-value-6418"
 _PROMPT = "Суммируй закрытый текст пользователя."
@@ -118,8 +120,10 @@ def test_gateway_constructs_without_api_key(
 
 def test_missing_key_is_generation_unavailable(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
-    """Проверяет отказ без ключа поставщика."""
+    """Проверяет отказ без ключа поставщика и без файла `.env`."""
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     gateway = DeepSeekLlmGateway(client=_unused_client())
 
@@ -128,6 +132,63 @@ def test_missing_key_is_generation_unavailable(
 
     assert captured.value.code == "generation_unavailable"
     assert _PROMPT not in str(captured.value)
+
+
+def test_dotenv_key_is_used_when_environment_unset(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Проверяет чтение ключа из `.env`, если переменной процесса нет."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    (tmp_path / ".env").write_text(
+        f"DEEPSEEK_API_KEY={_PROVIDER_VALUE}\n",
+        encoding="utf-8",
+    )
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=_success_payload())
+
+    result = DeepSeekLlmGateway(
+        client=httpx.Client(
+            transport=httpx.MockTransport(handler),
+            timeout=1.0,
+            follow_redirects=False,
+        )
+    ).complete(_request())
+
+    assert result.text == _ANSWER
+    assert seen[0].headers["Authorization"] == f"Bearer {_PROVIDER_VALUE}"
+
+
+def test_environment_key_overrides_dotenv(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Проверяет, что ключ процесса важнее значения из `.env`."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text(
+        "DEEPSEEK_API_KEY=sk-from-dotenv-file-only\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("DEEPSEEK_API_KEY", _PROVIDER_VALUE)
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=_success_payload())
+
+    DeepSeekLlmGateway(
+        client=httpx.Client(
+            transport=httpx.MockTransport(handler),
+            timeout=1.0,
+            follow_redirects=False,
+        )
+    ).complete(_request())
+
+    assert seen[0].headers["Authorization"] == f"Bearer {_PROVIDER_VALUE}"
 
 
 def test_blank_key_is_generation_unavailable(
@@ -165,6 +226,8 @@ def test_successful_provider_response_becomes_result(
     payload = json.loads(seen[0].content)
     assert payload["model"] == DEEPSEEK_MODEL
     assert payload["temperature"] == 0
+    assert payload["max_tokens"] == 16384
+    assert "thinking" not in payload
 
 
 def test_timeout_becomes_provider_error(
@@ -265,6 +328,28 @@ def test_non_stop_finish_reason_becomes_provider_error(
         _gateway_for(httpx.MockTransport(handler), monkeypatch).complete(_request())
 
     assert captured.value.code == "provider_error"
+
+
+def test_zero_top_p_and_zero_max_tokens_are_omitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Проверяет, что нулевые top_p и max_tokens не уходят поставщику."""
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json=_success_payload())
+
+    values = replace(seed_values(None), top_p=0.0, max_tokens=0)
+    _gateway_for(httpx.MockTransport(handler), monkeypatch).complete_with_values(
+        _request(),
+        values,
+    )
+    payload = json.loads(seen[0].content)
+
+    assert len(seen) == 1
+    assert "top_p" not in payload
+    assert "max_tokens" not in payload
 
 
 def test_request_rejects_user_supplied_url() -> None:

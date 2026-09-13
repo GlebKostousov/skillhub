@@ -5,5 +5,6 @@
 {% endblock %}
 
 {% block scripts %}
-  <script src="{{ url_for('static', path='/assistant.js') }}" defer></script>
+  <script src="{{ url_for('static', path='/assistant.js') }}?v=revise-1" defer></script>
+  <script src="{{ url_for('static', path='/protocol.js') }}?v=revise-1" defer></script>
 {% endblock %}

@@ -1,10 +1,15 @@
 "use strict";
 
+(function () {
 const form = document.querySelector("[data-assistant-form]");
 const statusNode = document.querySelector("[data-assistant-status]");
 const badgeNode = document.querySelector("[data-assistant-badge]");
 const resultNode = document.querySelector("[data-assistant-result]");
 const submitButton = document.querySelector("[data-assistant-submit]");
+const waitNode = document.querySelector("[data-assistant-wait]");
+const waitTextNode = document.querySelector("[data-assistant-wait-text]");
+const spinnerNode = document.querySelector("[data-assistant-spinner]");
+const submitLabel = document.querySelector("[data-assistant-submit-label]");
 
 if (form instanceof HTMLFormElement) {
   form.addEventListener("submit", (event) => {
@@ -14,7 +19,7 @@ if (form instanceof HTMLFormElement) {
 }
 
 /**
- * Отправляет намерение и материал, не затирая ввод при ошибке.
+ * Сначала выбирает режим, затем готовит ответ, не затирая ввод при ошибке.
  * @param {HTMLFormElement} assistantForm
  */
 async function submitAssistant(assistantForm) {
@@ -28,33 +33,166 @@ async function submitAssistant(assistantForm) {
   ) {
     return;
   }
+  hideProtocolFollowup();
   setBusy(true);
-  setStatus("loading", "Запрос обрабатывается.");
+  setBadgeText("Выбираю режим…");
+  setWaitText("Смотрю, какой режим подойдёт.");
+  setStatus("loading", "Смотрю, какой режим подойдёт.");
   if (resultNode instanceof HTMLElement) {
     resultNode.textContent = "";
   }
   try {
-    const response = await fetch("/api/assistant", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "X-CSRF-Token": token.value,
-      },
-      body: JSON.stringify({
-        intent: intent.value,
-        material: material.value,
-      }),
-    });
+    const classified = await postAssistant(token.value, intent.value, material.value, "classify");
+    const classifiedPayload = await classified.json();
+    if (!classified.ok) {
+      setStatus("error", readErrorMessage(classifiedPayload));
+      return;
+    }
+    if (readString(classifiedPayload.outcome) !== "classified") {
+      renderOutcome(classifiedPayload);
+      return;
+    }
+    setBadge(classifiedPayload);
+    setWaitText("Режим выбран. Пишу ответ.");
+    setStatus("loading", "Режим выбран. Пишу ответ.");
+    const response = await postAssistant(
+      token.value,
+      intent.value,
+      material.value,
+      "generate",
+    );
     const payload = await response.json();
     if (!response.ok) {
       setStatus("error", readErrorMessage(payload));
       return;
     }
-    renderOutcome(payload);
+    if (readString(payload.selected_skill) === "meeting-protocol") {
+      setBadge(payload);
+      setWaitText("Готовлю вопросы по пробелам.");
+      setStatus("loading", "Готовлю вопросы по пробелам.");
+      if (resultNode instanceof HTMLElement) {
+        resultNode.textContent = "";
+      }
+    } else {
+      renderOutcome(payload);
+    }
+    await startProtocolFollowup(payload, material.value);
+    if (readString(payload.selected_skill) === "meeting-protocol") {
+      setStatus("success", "Ниже несколько вопросов — или сразу сохраните в Word.");
+    }
   } catch {
-    setStatus("error", "Не удалось выполнить запрос.");
+    setStatus("error", "Не получилось отправить. Попробуйте ещё раз.");
   } finally {
     setBusy(false);
+  }
+}
+
+/**
+ * Отправляет одну стадию обращения к ассистенту.
+ * @param {string} token
+ * @param {string} intent
+ * @param {string} material
+ * @param {string} stage
+ * @returns {Promise<Response>}
+ */
+function postAssistant(token, intent, material, stage) {
+  return fetch("/api/assistant", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "X-CSRF-Token": token,
+    },
+    body: JSON.stringify({
+      intent,
+      material,
+      stage,
+    }),
+  });
+}
+
+/**
+ * После протокола открывает уточнения на этой же странице.
+ * @param {object} payload
+ * @param {string} material
+ */
+async function startProtocolFollowup(payload, material) {
+  const panel = document.querySelector("#protocol-followup");
+  if (
+    readString(payload.selected_skill) !== "meeting-protocol" ||
+    readString(payload.outcome) !== "success"
+  ) {
+    hideProtocolFollowup();
+    return;
+  }
+  const text = readString(payload.text);
+  if (panel instanceof HTMLElement) {
+    panel.classList.remove("d-none");
+  }
+  showProtocolLoading(true);
+  const markdown = document.querySelector("#protocol-markdown");
+  if (markdown instanceof HTMLTextAreaElement) {
+    markdown.value = text;
+  }
+  const transcript = document.querySelector("#protocol-transcript");
+  if (transcript instanceof HTMLTextAreaElement) {
+    transcript.value = material;
+  }
+  const protocol = await ensureProtocolApi();
+  if (protocol && typeof protocol.startFromDraft === "function") {
+    await protocol.startFromDraft(text, material);
+    showProtocolLoading(false);
+  } else {
+    showProtocolLoading(false);
+    setStatus("error", "Вопросы не загрузились. Обновите страницу.");
+  }
+  if (panel instanceof HTMLElement) {
+    panel.scrollIntoView({ block: "nearest" });
+  }
+}
+
+/**
+ * Подгружает скрипт уточнений, если хук ещё не появился.
+ * @returns {Promise<object|null>}
+ */
+async function ensureProtocolApi() {
+  if (window.SkillHubProtocol && typeof window.SkillHubProtocol.startFromDraft === "function") {
+    return window.SkillHubProtocol;
+  }
+  try {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "/static/protocol.js?v=revise-1";
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("protocol.js"));
+      document.head.appendChild(script);
+    });
+  } catch {
+    return null;
+  }
+  if (window.SkillHubProtocol && typeof window.SkillHubProtocol.startFromDraft === "function") {
+    return window.SkillHubProtocol;
+  }
+  return null;
+}
+
+/**
+ * Показывает ожидание списка пропусков в панели протокола.
+ * @param {boolean} visible
+ */
+function showProtocolLoading(visible) {
+  const loading = document.querySelector("#protocol-clarifications-loading");
+  if (loading instanceof HTMLElement) {
+    loading.classList.toggle("d-none", !visible);
+  }
+}
+
+/**
+ * Скрывает панель уточнений протокола.
+ */
+function hideProtocolFollowup() {
+  const panel = document.querySelector("#protocol-followup");
+  if (panel instanceof HTMLElement) {
+    panel.classList.add("d-none");
   }
 }
 
@@ -76,13 +214,28 @@ function renderOutcome(payload) {
  * @param {object} payload
  */
 function setBadge(payload) {
-  if (!(badgeNode instanceof HTMLElement)) {
-    return;
-  }
   const caption = readString(payload.caption);
-  badgeNode.textContent = caption
-    ? `Выбран режим: ${caption}`
-    : "Режим ещё не выбран";
+  setBadgeText(caption ? `Режим: ${caption}` : "Режим пока не выбран");
+}
+
+/**
+ * Пишет текст бейджа режима.
+ * @param {string} text
+ */
+function setBadgeText(text) {
+  if (badgeNode instanceof HTMLElement) {
+    badgeNode.textContent = text;
+  }
+}
+
+/**
+ * Пишет пояснение в баннер ожидания.
+ * @param {string} text
+ */
+function setWaitText(text) {
+  if (waitTextNode instanceof HTMLElement) {
+    waitTextNode.textContent = text;
+  }
 }
 
 /**
@@ -105,9 +258,24 @@ function setStatus(state, message) {
 function setBusy(busy) {
   if (form instanceof HTMLFormElement) {
     form.setAttribute("aria-busy", busy ? "true" : "false");
+    const fields = form.querySelectorAll("textarea, button");
+    for (const field of fields) {
+      if (field instanceof HTMLTextAreaElement || field instanceof HTMLButtonElement) {
+        field.disabled = busy;
+      }
+    }
   }
   if (submitButton instanceof HTMLButtonElement) {
     submitButton.disabled = busy;
+  }
+  if (submitLabel instanceof HTMLElement) {
+    submitLabel.textContent = busy ? "Работаю…" : "Отправить";
+  }
+  if (spinnerNode instanceof HTMLElement) {
+    spinnerNode.classList.toggle("d-none", !busy);
+  }
+  if (waitNode instanceof HTMLElement) {
+    waitNode.hidden = !busy;
   }
 }
 
@@ -119,7 +287,7 @@ function setBusy(busy) {
 function readErrorMessage(payload) {
   const error = payload && payload.error;
   const message = error ? readString(error.message) : "";
-  return message || "Не удалось выполнить запрос.";
+  return message || "Не получилось отправить. Попробуйте ещё раз.";
 }
 
 /**
@@ -130,3 +298,4 @@ function readErrorMessage(payload) {
 function readString(value) {
   return typeof value === "string" ? value : "";
 }
+})();

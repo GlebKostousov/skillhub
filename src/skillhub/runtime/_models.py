@@ -7,6 +7,9 @@ from typing import Literal
 from skillhub.runtime._constants import (
     EDITABLE_FIELDS,
     FIELD_HINTS,
+    FIELD_TITLES,
+    MAX_DAILY_BUDGET,
+    MAX_MAX_TOKENS,
     MAX_PENALTY,
     MAX_STOP_ITEMS,
     MAX_TEMPERATURE,
@@ -20,7 +23,6 @@ from skillhub.runtime._constants import (
     MIN_TOP_P,
     REASONING_EFFORT_VALUES,
     RESPONSE_FORMAT_VALUES,
-    STREAM_VALUES,
     THINKING_VALUES,
 )
 
@@ -66,6 +68,7 @@ class OverlayField:
 
     Attributes:
         name: имя редактируемого поля.
+        title: русское название поля на странице настроек.
         value: текущее значение после посева или файла.
         default: посевное значение поля.
         hint: русская подсказка для страницы настроек.
@@ -76,6 +79,7 @@ class OverlayField:
     """
 
     name: str
+    title: str
     value: object
     default: object
     hint: str
@@ -135,6 +139,7 @@ def catalog_fields(
     return tuple(
         OverlayField(
             name=name,
+            title=FIELD_TITLES[name],
             value=getattr(values, name),
             default=getattr(defaults, name),
             hint=FIELD_HINTS[name],
@@ -153,11 +158,10 @@ def _specs_for(model: str, model_limits: Mapping[str, int]) -> dict[str, _FieldS
         "max_tokens": _FieldSpec(
             "integer",
             min=MIN_MAX_TOKENS,
-            max=model_limits.get(model),
+            max=min(MAX_MAX_TOKENS, model_limits.get(model, MAX_MAX_TOKENS)),
         ),
         "temperature": _FieldSpec("number", min=MIN_TEMPERATURE, max=MAX_TEMPERATURE),
         "timeout": _FieldSpec("number", min=MIN_TIMEOUT, max=MAX_TIMEOUT),
-        "stream": _FieldSpec("boolean", allowed=STREAM_VALUES),
         "thinking": _FieldSpec("choice", allowed=THINKING_VALUES),
         "reasoning_effort": _FieldSpec("choice", allowed=REASONING_EFFORT_VALUES),
         "top_p": _FieldSpec("number", min=MIN_TOP_P, max=MAX_TOP_P),
@@ -165,6 +169,10 @@ def _specs_for(model: str, model_limits: Mapping[str, int]) -> dict[str, _FieldS
         "presence_penalty": _FieldSpec("number", min=MIN_PENALTY, max=MAX_PENALTY),
         "stop": _FieldSpec("string_list", max=MAX_STOP_ITEMS),
         "response_format": _FieldSpec("choice", allowed=RESPONSE_FORMAT_VALUES),
-        "daily_budget_nanos": _FieldSpec("integer", min=MIN_DAILY_BUDGET),
+        "daily_budget_nanos": _FieldSpec(
+            "integer",
+            min=MIN_DAILY_BUDGET,
+            max=MAX_DAILY_BUDGET,
+        ),
     }
     return {name: specs[name] for name in EDITABLE_FIELDS}

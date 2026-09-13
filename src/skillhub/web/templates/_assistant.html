@@ -1,17 +1,28 @@
 <section class="card border-0 shadow-sm mb-4" aria-label="Окно ассистента">
   <div class="card-body p-4 p-md-5">
+    <p class="text-body-secondary mb-2">Помощник</p>
     <h1>SkillHub</h1>
-    <p class="lead">
-      Сформулируйте задачу и при необходимости добавьте материал.
-      Режим выбирается автоматически.
+    <p class="lead text-body-secondary">
+      Напишите, что сделать, и вставьте запись встречи или текст.
+      Режим подберётся сам.
     </p>
     <p
-      class="badge text-bg-secondary mb-4"
+      class="badge text-bg-secondary mb-3"
       data-assistant-badge
       aria-live="polite"
     >
-      Режим ещё не выбран
+      Режим пока не выбран
     </p>
+    <div class="assistant-wait" data-assistant-wait hidden>
+      <span class="assistant-spinner" aria-hidden="true"></span>
+      <div class="assistant-wait-copy">
+        <p class="mb-1" data-assistant-wait-text>Работаю над запросом.</p>
+        <p class="assistant-dots mb-0" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </p>
+        <div class="assistant-progress" aria-hidden="true"></div>
+      </div>
+    </div>
     <form data-assistant-form>
       <input type="hidden" name="csrf_token" value="{{ csrf_token | default('', true) }}">
       <div class="mb-3">
@@ -25,7 +36,7 @@
         ></textarea>
       </div>
       <div class="mb-4">
-        <label class="form-label" for="assistant-material">Материал для обработки</label>
+        <label class="form-label" for="assistant-material">Текст или запись встречи</label>
         <textarea
           class="form-control"
           id="assistant-material"
@@ -38,7 +49,8 @@
         type="submit"
         data-assistant-submit
       >
-        Отправить
+        <span class="assistant-spinner d-none" data-assistant-spinner aria-hidden="true"></span>
+        <span data-assistant-submit-label>Отправить</span>
       </button>
     </form>
     <p
@@ -51,19 +63,4 @@
   </div>
 </section>
 
-<section class="card border-0 shadow-sm" aria-labelledby="assistant-modes-title">
-  <div class="card-body p-4">
-    <h2 id="assistant-modes-title" class="h4">Доступные режимы</h2>
-    <p>
-      Список показывает, какие режимы есть в каталоге.
-      Выбрать режим вручную нельзя: его определяет классификатор.
-    </p>
-    <ul class="mb-0" data-assistant-modes>
-      {% if assistant_modes is defined %}
-        {% for mode in assistant_modes() %}
-          <li data-skill-name="{{ mode.name }}">{{ mode.caption }}</li>
-        {% endfor %}
-      {% endif %}
-    </ul>
-  </div>
-</section>
+{% include "protocol.html" %}

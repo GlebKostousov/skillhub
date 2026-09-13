@@ -7,7 +7,11 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from skillhub.runtime import OverlayField, RuntimeSnapshot, RuntimeStore
-from skillhub.runtime._constants import MAX_STOP_ITEMS, MAX_STOP_LENGTH
+from skillhub.runtime._constants import (
+    FIELD_CHOICE_LABELS,
+    MAX_STOP_ITEMS,
+    MAX_STOP_LENGTH,
+)
 from skillhub.web._settings_guard import (
     validate_csrf_token,
     validate_settings_request,
@@ -70,7 +74,7 @@ class _SettingsRoutes:
             request: недоверенный JSON-запрос сохранения настроек.
         """
         values = await validate_settings_request(request, self._csrf_token)
-        self._store.save(_coerce_json_float_fields(values))
+        self._store.save(_prepare_overlay_values(values))
         return _settings_report(self._store.snapshot())
 
 
@@ -115,16 +119,18 @@ def create_settings_router(
 _JSON_FLOAT_FIELDS = ("timeout", "top_p")
 
 
-def _coerce_json_float_fields(values: dict[str, object]) -> dict[str, object]:
-    """Приводит JSON-целые timeout и top_p к float перед записью.
+def _prepare_overlay_values(values: dict[str, object]) -> dict[str, object]:
+    """Дописывает неуправляемый stream и приводит целые timeout и top_p.
 
     Args:
         values: полный набор значений из проверенного JSON-тела.
 
     Returns:
-        Копия набора, где целые timeout и top_p приведены к float.
+        Копия набора, готовая к записи наложения.
     """
     coerced = dict(values)
+    if "stream" not in coerced:
+        coerced["stream"] = False
     for name in _JSON_FLOAT_FIELDS:
         value = coerced.get(name)
         if type(value) is int:
@@ -139,6 +145,7 @@ def _settings_report(snapshot: RuntimeSnapshot) -> SettingsReport:
 def _field_payload(field: OverlayField) -> dict[str, object]:
     payload: dict[str, object] = {
         "name": field.name,
+        "title": field.title,
         "value": _public_value(field.value),
         "default": _public_value(field.default),
         "hint": field.hint,
@@ -155,10 +162,19 @@ def _field_payload(field: OverlayField) -> dict[str, object]:
 
 def _page_field(field: OverlayField) -> dict[str, object]:
     payload = _field_payload(field)
-    payload["default_label"] = _label(payload["default"])
-    payload["value_label"] = _label(payload["value"])
+    payload["default_label"] = _choice_label(field.name, payload["default"])
+    payload["value_label"] = _choice_label(field.name, payload["value"])
     payload["range_label"] = _range_label(payload)
     payload["input_value"] = _input_value(field)
+    payload["default_input"] = _form_value(field.default)
+    payload["required"] = field.kind != "string_list" and field.name != (
+        "daily_budget_nanos"
+    )
+    if field.kind == "string_list":
+        payload["item_length"] = MAX_STOP_LENGTH
+        payload["textarea_maxlength"] = (
+            MAX_STOP_ITEMS * MAX_STOP_LENGTH + MAX_STOP_ITEMS
+        )
     payload["options"] = _options(payload)
     return payload
 
@@ -171,24 +187,37 @@ def _public_value(value: object) -> object:
 
 def _label(value: object) -> str:
     if value is None:
-        return "n/a"
+        return "без ограничения"
     if value is True:
         return "true"
     if value is False:
         return "false"
     if type(value) is list:
         if not value:
-            return "пусто"
+            return "нет"
         return ", ".join(_label(item) for item in value)
     return str(value)
 
 
+def _choice_label(name: str, value: object) -> str:
+    labels = FIELD_CHOICE_LABELS.get(name, {})
+    if type(value) is str and value in labels:
+        return labels[value]
+    return _label(value)
+
+
 def _range_label(field: dict[str, object]) -> str:
+    if field.get("name") == "daily_budget_nanos":
+        return "Целое число от 0. Пустое значение — без ограничения."
     if field.get("kind") == "string_list":
         return f"{MAX_STOP_ITEMS} элементов, {MAX_STOP_LENGTH} символов"
     allowed = field.get("allowed")
     if type(allowed) is list:
-        return "Допустимо: " + ", ".join(_label(item) for item in allowed)
+        name = field.get("name")
+        field_name = name if type(name) is str else ""
+        return "Допустимо: " + ", ".join(
+            _choice_label(field_name, item) for item in allowed
+        )
     parts: list[str] = []
     if "min" in field:
         parts.append(f"от {field['min']}")
@@ -203,7 +232,12 @@ def _options(field: dict[str, object]) -> list[dict[str, str]] | None:
     allowed = field.get("allowed")
     if type(allowed) is not list:
         return None
-    return [{"value": _form_value(item), "label": _label(item)} for item in allowed]
+    name = field.get("name")
+    field_name = name if type(name) is str else ""
+    return [
+        {"value": _form_value(item), "label": _choice_label(field_name, item)}
+        for item in allowed
+    ]
 
 
 def _input_value(field: OverlayField) -> str:

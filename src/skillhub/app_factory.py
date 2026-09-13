@@ -1,6 +1,7 @@
 """Собирает приложение и его инфраструктурные зависимости."""
 
 import secrets
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI
@@ -9,8 +10,15 @@ from fastapi.templating import Jinja2Templates
 
 from skillhub import web
 from skillhub._server_logging import configure_server_logging
+from skillhub.assistant import ProtocolSkillHandler
 from skillhub.core import Settings, configure_logging
-from skillhub.llm import DeepSeekLlmGateway, LlmGateway, MeteredLlmGateway
+from skillhub.llm import (
+    DeepSeekLlmGateway,
+    GenerationUnavailableError,
+    LlmGateway,
+    MeteredLlmGateway,
+)
+from skillhub.protocol import FinalizedProtocol, Protocol
 from skillhub.registry import SkillRegistry
 from skillhub.runtime import RuntimeStore
 from skillhub.usage import UsageLedger, load_tariffs
@@ -97,6 +105,7 @@ def create_app(
             templates,
             csrf_token=csrf_token,
             generator=None,
+            reviser=_bind_protocol_reviser(registry, gateway),
         )
     )
     _attach_usage_routes(
@@ -117,6 +126,34 @@ def create_app(
     )
     install_error_handlers(app)
     return app
+
+
+def _bind_protocol_reviser(
+    registry: SkillRegistry,
+    gateway: LlmGateway,
+) -> Callable[[Protocol, Sequence[Mapping[str, object]], str], FinalizedProtocol]:
+    """Собирает повторную сборку протокола из снимка скилла и шлюза.
+
+    Args:
+        registry: файловый реестр скиллов текущего приложения.
+        gateway: учётный шлюз модели.
+
+    Returns:
+        Вызов повторной сборки или отказ, если скилл протокола отсутствует.
+    """
+    handler = ProtocolSkillHandler(gateway)
+
+    def reviser(
+        protocol: Protocol,
+        answers: Sequence[Mapping[str, object]],
+        material: str,
+    ) -> FinalizedProtocol:
+        skill = registry.capture().snapshot.get("meeting-protocol")
+        if skill is None:
+            raise GenerationUnavailableError
+        return handler.revise(skill, protocol, answers, material)
+
+    return reviser
 
 
 def _attach_usage_routes(app: FastAPI, router: APIRouter) -> None:

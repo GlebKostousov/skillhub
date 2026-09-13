@@ -1,3 +1,4 @@
+# ruff: noqa: RUF001
 """Проверяет оркестрацию выбора режима и диспетчеризации."""
 
 from pathlib import Path
@@ -147,6 +148,24 @@ def test_real_simple_skills_receive_distinct_bodies() -> None:
                 assert snapshot[other].body not in sent
 
 
+def test_classify_returns_caption_without_generation() -> None:
+    """Проверяет, что выбор режима не запускает обработчик."""
+    assistant, classify, generate = _assistant('{"skill": "text-summary"}')
+    snapshot = _full_snapshot()
+
+    outcome = assistant.classify("Сделай по режиму", snapshot)
+
+    assert outcome == AssistantOutcome(
+        selected_skill="text-summary",
+        caption=snapshot["text-summary"].caption,
+        outcome="classified",
+        text=None,
+        message="Режим выбран.",
+    )
+    assert len(classify.requests) == 1
+    assert generate.requests == []
+
+
 def test_none_does_not_generate() -> None:
     """Проверяет исход none без вызова генерации."""
     assistant, classify, generate = _assistant('{"skill": null}')
@@ -158,7 +177,10 @@ def test_none_does_not_generate() -> None:
         caption=None,
         outcome="none",
         text=None,
-        message="Подходящий режим не выбран.",
+        message=(
+            "Не поняла задачу. Напишите коротко, что сделать — "
+            "например, собрать протокол встречи."
+        ),
     )
     assert len(classify.requests) == 1
     assert generate.requests == []

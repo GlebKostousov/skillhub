@@ -2,10 +2,12 @@
 
 import json
 import os
+from pathlib import Path
 from typing import Any, cast
 
 import httpx
 import structlog
+from dotenv import dotenv_values
 
 from skillhub.llm._constants import DEEPSEEK_API_KEY_ENV, DEEPSEEK_API_URL, HTTP_OK
 from skillhub.llm._errors import GenerationUnavailableError, ProviderError
@@ -16,6 +18,7 @@ from skillhub.runtime._schema import seed_values
 _UNUSED_REASONING_EFFORT = "high"
 _UNUSED_TOP_P = 1.0
 _UNUSED_PENALTY = 0
+_MAX_PROVIDER_MESSAGE = 160
 _UNUSED_RESPONSE_FORMAT = "text"
 
 
@@ -80,7 +83,12 @@ def _reject_user_url(request: object) -> None:
 
 
 def _resolve_api_key() -> str:
+    """Возвращает ключ поставщика: переменная процесса важнее `.env`."""
     raw_key = os.environ.get(DEEPSEEK_API_KEY_ENV)
+    if raw_key is None:
+        env_path = Path(".env")
+        if env_path.is_file():
+            raw_key = dotenv_values(env_path).get(DEEPSEEK_API_KEY_ENV)
     if raw_key is None or not raw_key.strip():
         structlog.get_logger(__name__).warning(
             "llm.generation_unavailable",
@@ -106,8 +114,8 @@ def _complete_once(
             json=_provider_body(request, values),
             timeout=values.timeout,
         )
-    except httpx.HTTPError:
-        _log_provider_error()
+    except httpx.HTTPError as exc:
+        _log_provider_error(error_type=type(exc).__name__)
         raise ProviderError from None
     return _parse_response(response)
 
@@ -119,15 +127,16 @@ def _provider_body(request: LlmRequest, values: OverlayValues) -> dict[str, obje
             {"role": message.role, "content": message.content}
             for message in request.messages
         ],
-        "max_tokens": values.max_tokens,
         "temperature": values.temperature,
         "stream": False,
     }
+    if values.max_tokens > 0:
+        body["max_tokens"] = values.max_tokens
     if values.thinking == "disabled":
         body["thinking"] = {"type": "disabled"}
     if values.reasoning_effort != _UNUSED_REASONING_EFFORT:
         body["reasoning_effort"] = values.reasoning_effort
-    if values.top_p != _UNUSED_TOP_P:
+    if 0 < values.top_p < _UNUSED_TOP_P:
         body["top_p"] = values.top_p
     if values.frequency_penalty != _UNUSED_PENALTY:
         body["frequency_penalty"] = values.frequency_penalty
@@ -142,12 +151,15 @@ def _provider_body(request: LlmRequest, values: OverlayValues) -> dict[str, obje
 
 def _parse_response(response: httpx.Response) -> LlmResult:
     if response.status_code != HTTP_OK:
-        _log_provider_error(status_code=response.status_code)
+        _log_provider_error(
+            status_code=response.status_code,
+            error_type=_safe_provider_message(response),
+        )
         raise ProviderError from None
     try:
         payload: object = response.json()
     except json.JSONDecodeError:
-        _log_provider_error(status_code=response.status_code)
+        _log_provider_error(status_code=response.status_code, error_type="payload")
         raise ProviderError from None
     return _result_from_payload(payload)
 
@@ -156,10 +168,10 @@ def _result_from_payload(payload: object) -> LlmResult:
     try:
         result = _parse_payload(payload)
     except (AttributeError, IndexError, KeyError, TypeError):
-        _log_provider_error()
+        _log_provider_error(error_type="payload")
         raise ProviderError from None
     if result.finish_reason != "stop":
-        _log_provider_error()
+        _log_provider_error(error_type="finish_reason")
         raise ProviderError from None
     return result
 
@@ -194,15 +206,33 @@ def _parse_payload(payload: object) -> LlmResult:
     )
 
 
-def _log_provider_error(*, status_code: int | None = None) -> None:
-    if status_code is None:
-        structlog.get_logger(__name__).warning(
-            "llm.provider_error",
-            error_code="provider_error",
-        )
-        return
-    structlog.get_logger(__name__).warning(
-        "llm.provider_error",
-        error_code="provider_error",
-        status_code=status_code,
-    )
+def _safe_provider_message(response: httpx.Response) -> str | None:
+    """Возвращает короткое сообщение поставщика без секретов и содержимого."""
+    try:
+        payload: object = response.json()
+    except json.JSONDecodeError:
+        return None
+    error = payload.get("error") if type(payload) is dict else None
+    message = error.get("message") if type(error) is dict else None
+    if type(message) is not str:
+        return None
+    cleaned = " ".join(message.split())
+    if not cleaned or len(cleaned) > _MAX_PROVIDER_MESSAGE:
+        return None
+    lowered = cleaned.casefold()
+    if "sk-" in cleaned or "bearer" in lowered or "api_key" in lowered:
+        return None
+    return cleaned
+
+
+def _log_provider_error(
+    *,
+    status_code: int | None = None,
+    error_type: str | None = None,
+) -> None:
+    payload: dict[str, object] = {"error_code": "provider_error"}
+    if status_code is not None:
+        payload["status_code"] = status_code
+    if error_type is not None:
+        payload["error_type"] = error_type
+    structlog.get_logger(__name__).warning("llm.provider_error", **payload)

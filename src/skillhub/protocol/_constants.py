@@ -38,5 +38,5 @@ TASK_COLUMN_COUNT = 3
 MAX_PROTOCOL_CHARS = 65_536
 """Максимальная длина входного текста до разбора."""
 
-MAX_CLARIFICATIONS = 10
+MAX_CLARIFICATIONS = 24
 """Максимальное число уточнений в одном списке."""

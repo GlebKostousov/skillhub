@@ -1,10 +1,31 @@
+# ruff: noqa: RUF001
 """Собирает нормативный протокол через порт генерации и шлюз модели."""
+
+from collections.abc import Mapping, Sequence
 
 from skillhub.assistant._handler import SkillHandler
 from skillhub.assistant._prompt import build_instruction_request
 from skillhub.llm import LlmGateway
-from skillhub.protocol import GeneratedDraft, create_draft, render
+from skillhub.protocol import (
+    FinalizedProtocol,
+    GeneratedDraft,
+    Protocol,
+    create_draft,
+    render,
+    revise,
+)
 from skillhub.registry import Skill
+
+_REVISE_ADDENDUM = """# Переписывание черновика
+
+В недоверенном материале три блока: запись встречи,
+черновик протокола и ответы человека на уточнения.
+Собери итоговый протокол той же грамматики.
+Ответы человека важнее черновика: поставь их в нужные поля
+и согласуй формулировки вокруг.
+Не выдумывай факты сверх записи встречи и ответов.
+Пропущенные уточнения оставь как в черновике.
+Верни только протокол."""
 
 
 class ProtocolSkillHandler(SkillHandler):
@@ -30,6 +51,32 @@ class ProtocolSkillHandler(SkillHandler):
         """
         protocol = create_draft(self._generator, skill.body, material)
         return render(protocol)
+
+    def revise(
+        self,
+        skill: Skill,
+        protocol: Protocol,
+        answers: Sequence[Mapping[str, object]],
+        material: str,
+    ) -> FinalizedProtocol:
+        """Переписывает черновик протокола вместе с ответами на уточнения.
+
+        Args:
+            skill: выбранный скилл протокола с доверенным телом.
+            protocol: первый принятый черновик.
+            answers: решения с идентификатором и действием.
+            material: недоверенная транскрипция встречи.
+
+        Returns:
+            Протокол из повторного ответа порта.
+        """
+        return revise(
+            protocol,
+            answers,
+            material,
+            self._generator,
+            f"{skill.body}\n\n{_REVISE_ADDENDUM}",
+        )
 
 
 class _GatewayProtocolGenerator:

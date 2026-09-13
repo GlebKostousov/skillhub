@@ -18,7 +18,6 @@ _EDITABLE = (
     "max_tokens",
     "temperature",
     "timeout",
-    "stream",
     "thinking",
     "reasoning_effort",
     "top_p",
@@ -48,17 +47,16 @@ def test_seed_catalog_exposes_hints_defaults_and_kinds(
     assert by_name["max_tokens"].value == 16384
     assert by_name["max_tokens"].default == 16384
     assert by_name["max_tokens"].kind == "integer"
-    assert by_name["max_tokens"].min == 1
+    assert by_name["max_tokens"].min == 0
     assert by_name["max_tokens"].max == 16384
+    assert by_name["max_tokens"].title == "Максимум токенов в ответе"
     assert by_name["temperature"].value == 0
     assert by_name["temperature"].default == 0
     assert by_name["temperature"].kind == "number"
     assert by_name["timeout"].value == 60.0
     assert by_name["timeout"].default == 60.0
     assert by_name["timeout"].kind == "number"
-    assert by_name["stream"].value is False
-    assert by_name["stream"].default is False
-    assert by_name["stream"].allowed == (False,)
+    assert snapshot.values.stream is False
     assert by_name["thinking"].value == "enabled"
     assert by_name["thinking"].default == "enabled"
     assert by_name["thinking"].allowed == ("enabled", "disabled")
@@ -77,6 +75,7 @@ def test_seed_catalog_exposes_hints_defaults_and_kinds(
     assert by_name["daily_budget_nanos"].value == 250
     assert by_name["daily_budget_nanos"].default == 250
     assert by_name["daily_budget_nanos"].min == 0
+    assert by_name["daily_budget_nanos"].max == 1_000_000_000_000_000
     for field in snapshot.fields:
         assert field.hint
         assert any(ord(character) >= 1024 for character in field.hint)

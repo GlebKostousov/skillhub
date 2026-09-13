@@ -1,4 +1,3 @@
-# ruff: noqa: RUF001
 """Строит уточнения протокола и применяет ответы к целевым полям."""
 
 from collections.abc import Iterator, Mapping, Sequence
@@ -18,12 +17,13 @@ from skillhub.protocol._models import Clarification, Protocol, ProtocolTask
 _ANSWER = "answer"
 _SKIP = "skip"
 _ALLOWED_KEYS = frozenset({"id", "action", "value"})
-_DATE_REASON = "Дата встречи не указана."
-_DATE_HINT = "Укажите дату встречи."
-_PARTICIPANTS_REASON = "Участники встречи не указаны."
-_PARTICIPANTS_HINT = "Перечислите имена через запятую."
-_ASSIGNEE_HINT = "Укажите ответственного."
-_DUE_HINT = "Укажите срок."
+_DATE_REASON = "Какого числа была встреча?"
+_DATE_HINT = "Например, 13.09.2026"
+_PARTICIPANTS_REASON = "Кто был на встрече?"
+_PARTICIPANTS_HINT = "Имена через запятую"
+_ASSIGNEE_HINT = "Имя"
+_DUE_HINT = "Дата или как договорились"
+_QUESTION_HINT = "Короткий ответ"
 
 type _ParsedDecision = tuple[str, str, str | None]
 
@@ -76,6 +76,9 @@ def _iter_gaps(protocol: Protocol) -> Iterator[Clarification]:
         yield _item("date", _DATE_REASON, _DATE_HINT)
     if _participants_missing(protocol.participants):
         yield _item("participants", _PARTICIPANTS_REASON, _PARTICIPANTS_HINT)
+    for index, question in enumerate(protocol.open_questions):
+        if question != PLACEHOLDER:
+            yield _item(f"question:{index}", question, _QUESTION_HINT)
     for index, task in enumerate(protocol.tasks):
         yield from _task_gaps(index, task)
 
@@ -84,13 +87,13 @@ def _task_gaps(index: int, task: ProtocolTask) -> Iterator[Clarification]:
     if task.assignee == PLACEHOLDER:
         yield _item(
             f"task:{index}:assignee",
-            f"Не указан ответственный за задачу «{task.title}».",
+            f"Кто отвечает за «{task.title}»?",
             _ASSIGNEE_HINT,
         )
     if task.due == PLACEHOLDER:
         yield _item(
             f"task:{index}:due",
-            f"Не указан срок задачи «{task.title}».",
+            f"До какого срока «{task.title}»?",
             _DUE_HINT,
         )
 
@@ -143,6 +146,8 @@ def _write_field(protocol: Protocol, identifier: str, value: str) -> Protocol:
         return protocol.model_copy(update={"date": value})
     if identifier == "participants":
         return protocol.model_copy(update={"participants": _split_names(value)})
+    if identifier.startswith("question:"):
+        return _write_question(protocol, identifier, value)
     index_text, field = identifier.removeprefix("task:").split(":", 1)
     tasks = list(protocol.tasks)
     index = int(index_text)
@@ -153,6 +158,19 @@ def _write_field(protocol: Protocol, identifier: str, value: str) -> Protocol:
     except ValidationError:
         raise InvalidClarificationAnswerError from None
     return protocol.model_copy(update={"tasks": tuple(tasks)})
+
+
+def _write_question(protocol: Protocol, identifier: str, value: str) -> Protocol:
+    index_text = identifier.removeprefix("question:")
+    try:
+        index = int(index_text)
+    except ValueError:
+        raise InvalidClarificationAnswerError from None
+    questions = list(protocol.open_questions)
+    if index < 0 or index >= len(questions):
+        raise InvalidClarificationAnswerError from None
+    questions[index] = value
+    return protocol.model_copy(update={"open_questions": tuple(questions)})
 
 
 def _split_names(raw: str) -> tuple[str, ...]:

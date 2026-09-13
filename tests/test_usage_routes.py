@@ -48,7 +48,10 @@ def test_empty_journal_uses_null_zero_and_empty_copy(usage_path: Path) -> None:
     assert page.status_code == 200
     assert "<h1" in page.text
     assert "Расходы" in page.text
-    assert "n/a" in page.text
+    assert "Запрос" in page.text or _EMPTY_COPY in page.text
+    assert "Текущий запрос" not in page.text
+    assert "Сегодня" not in page.text
+    assert "n/a" not in page.text
     assert _EMPTY_COPY in page.text
     assert "intent" not in page.text
     assert "material" not in page.text
@@ -75,7 +78,9 @@ def test_recorded_day_sum_matches_json_html_and_sqlite(usage_path: Path) -> None
 
     assert payload["today"]["committed_nanos"] == 333
     assert payload["today"]["committed_nanos"] == sqlite_sum
-    assert str(payload["today"]["committed_nanos"]) in page.text
+    assert "req-today-b" in page.text
+    assert "Текущий запрос" not in page.text
+    assert "Сегодня" not in page.text
     assert [item["request_id"] for item in payload["entries"]] == [
         "req-today-b",
         "req-today-a",
@@ -102,8 +107,10 @@ def test_request_id_selects_current_or_stays_null(usage_path: Path) -> None:
     assert found["current"]["currency"] == "USD"
     assert missing["current"] is None
     assert "req-current" in found_page.text
-    assert "450" in found_page.text
-    assert "n/a" in missing_page.text
+    assert "0,00000045 $" in found_page.text
+    assert "req-unknown" not in missing_page.text
+    assert "Текущий запрос" not in found_page.text
+    assert "n/a" not in missing_page.text
 
 
 def test_navigation_includes_usage_tab(usage_path: Path) -> None:
@@ -112,8 +119,12 @@ def test_navigation_includes_usage_tab(usage_path: Path) -> None:
     page = TestClient(create_app()).get("/skills")
 
     assert '<nav aria-label="Основная навигация">' in page.text
-    assert '<a href="/skills">Скиллы</a>' in page.text
-    assert '<a href="/usage">Расходы</a>' in page.text
+    assert 'href="/skills"' in page.text
+    assert "Скиллы" in page.text
+    assert 'href="/usage"' in page.text
+    assert "Расходы" in page.text
+    assert 'href="/protocol"' not in page.text
+    assert 'aria-current="page"' in page.text
 
 
 def test_tiny_daily_budget_rejects_assistant_before_model(
@@ -177,31 +188,35 @@ def test_current_cost_sums_committed_rows_of_one_request(usage_path: Path) -> No
 
     payload = client.get("/api/usage", params={"request_id": "req-sum"}).json()
     page = client.get("/usage", params={"request_id": "req-sum"})
-    current_block = _section_between(page.text, "Текущий запрос", "Сегодня")
 
     assert payload["current"] is not None
     assert payload["current"]["cost_nanos"] == 333
     assert payload["current"]["currency"] == "USD"
-    assert "333" in current_block
-    assert "111" not in current_block
-    assert "222" not in current_block
+    assert "req-sum" in page.text
+    assert "0,000000111 $" in page.text
+    assert "0,000000222 $" in page.text
+    assert "Текущий запрос" not in page.text
     assert _committed_cost(ledger, "req-sum", "ok") == 333
 
 
-def test_current_cost_unit_is_nano_usd_not_bare_dollars(usage_path: Path) -> None:
-    """Проверяет подпись нано-USD у цены запроса без голого USD."""
+def test_usage_table_uses_human_headers_and_dollar_cost(usage_path: Path) -> None:
+    """Проверяет русские заголовки журнала и стоимость в долларах."""
     UsageLedger(usage_path).record(
         _committed_event("req-unit", 450, datetime.now(UTC)),
     )
     page = TestClient(create_app()).get("/usage", params={"request_id": "req-unit"})
-    current_block = _section_between(page.text, "Текущий запрос", "Сегодня")
     table_head = _section_between(page.text, "<thead>", "</thead>")
 
-    assert "450" in current_block
-    assert "нано-USD" in current_block
-    assert "450 USD" not in current_block
-    assert " USD" not in current_block
-    assert "нано-USD" in table_head
+    assert "Запрос" in table_head
+    assert "Операция" in table_head
+    assert "Режим" in table_head
+    assert "Стоимость" in table_head
+    assert "Статус" in table_head
+    assert "Время" in table_head
+    assert "request_id" not in table_head
+    assert "нано-USD" not in page.text
+    assert "0,00000045 $" in page.text
+    assert "450 USD" not in page.text
     assert ">USD<" not in table_head
     assert ">currency<" not in table_head
 
@@ -217,34 +232,36 @@ def test_reserved_row_appears_in_today_json(usage_path: Path) -> None:
     assert payload["today"]["committed_nanos"] == 0
 
 
-def test_today_amounts_are_labeled_nano_usd(
+def test_today_amounts_stay_in_json_not_html(
     usage_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Проверяет подпись нано-USD у committed, reserved и заданного лимита."""
+    """Проверяет дневные суммы только в JSON, без блока «Сегодня»."""
     monkeypatch.setenv("SKILLHUB_DAILY_BUDGET_NANOS", "1000")
     UsageLedger(usage_path).record(
         _committed_event("req-today-unit", 111, datetime.now(UTC)),
     )
-    page = TestClient(create_app()).get("/usage")
-    today_block = _section_between(page.text, "Сегодня", "Журнал")
+    client = TestClient(create_app())
+    payload = client.get("/api/usage").json()
+    page = client.get("/usage")
 
-    assert "111 нано-USD" in today_block
-    assert "0 нано-USD" in today_block
-    assert "1000 нано-USD" in today_block
-    assert "n/a" not in today_block
+    assert payload["today"]["committed_nanos"] == 111
+    assert payload["today"]["limit_nanos"] == 1000
+    assert "Сегодня" not in page.text
+    assert "нано-USD" not in page.text
+    assert "0,000000111 $" in page.text
 
 
-def test_null_limit_renders_as_na(usage_path: Path) -> None:
-    """Проверяет отображение n/a, когда дневной потолок не задан."""
+def test_null_limit_stays_in_json_without_html_na(usage_path: Path) -> None:
+    """Проверяет отсутствие лимита в JSON без подписи n/a на странице."""
     del usage_path
     client = TestClient(create_app())
     payload = client.get("/api/usage").json()
     page = client.get("/usage")
 
     assert payload["today"]["limit_nanos"] is None
-    assert "n/a" in _section_between(page.text, "Сегодня", "Журнал")
-    assert "n/a" in page.text
+    assert "Сегодня" not in page.text
+    assert "n/a" not in page.text
 
 
 def test_api_usage_limit_follows_overlay_budget(
@@ -266,7 +283,8 @@ def test_api_usage_limit_follows_overlay_budget(
 
     assert before["today"]["limit_nanos"] == 1000
     assert after["today"]["limit_nanos"] == 7777
-    assert "7777 нано-USD" in _section_between(page.text, "Сегодня", "Журнал")
+    assert "Сегодня" not in page.text
+    assert "7777" not in page.text
 
 
 def _overlay_payload(**overrides: object) -> dict[str, object]:

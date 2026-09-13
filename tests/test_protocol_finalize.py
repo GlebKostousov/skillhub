@@ -12,7 +12,7 @@ from httpx2 import Response
 
 from skillhub.app_factory import create_app
 from skillhub.core import SkillHubError
-from skillhub.llm import FakeLlmGateway
+from skillhub.llm import FakeLlmGateway, LlmResult, LlmUsage
 from skillhub.protocol import (
     PLACEHOLDER,
     ExtraClarificationFieldError,
@@ -25,6 +25,7 @@ from skillhub.protocol import (
     UnresolvedClarificationError,
     finalize,
     parse,
+    revise,
 )
 from skillhub.web import create_protocol_router, install_error_handlers
 
@@ -49,7 +50,7 @@ _VALID_MARKDOWN = f"""# Протокол встречи: Тема
 - {PLACEHOLDER}
 
 ## Открытые вопросы
-- вопрос
+- {PLACEHOLDER}
 """
 _GAP_MARKDOWN = _VALID_MARKDOWN.replace(
     "**Дата:** 2026-09-12",
@@ -75,7 +76,7 @@ def _protocol(**overrides: object) -> Protocol:
         "discussion": ("пункт обсуждения",),
         "decisions": ("включить показатели продаж",),
         "tasks": (),
-        "open_questions": ("открытый вопрос",),
+        "open_questions": (),
     }
     payload.update(overrides)
     return Protocol.model_validate(payload)
@@ -233,10 +234,7 @@ def test_verify_runs_on_applied_protocol() -> None:
     )
 
     assert result.protocol.tasks[0].assignee == "Анна"
-    assert [item.target for item in result.unconfirmed] == [
-        "task:0:assignee",
-        "task:0:due",
-    ]
+    assert [item.target for item in result.unconfirmed] == ["task:0:due"]
 
 
 def test_finalize_module_does_not_call_model_or_usage() -> None:
@@ -270,6 +268,57 @@ class _FakeGenerator:
         """
         self.calls.append((instruction, material))
         return self.draft
+
+
+def test_revise_sends_first_draft_and_answers_to_generator() -> None:
+    """Проверяет, что повторная сборка отдаёт модели черновик и ответы."""
+    rewritten = _VALID_MARKDOWN.replace("Тема", "Продажи")
+    generator = _FakeGenerator(GeneratedDraft(text=rewritten, finish_reason="stop"))
+
+    result = revise(
+        parse(_GAP_MARKDOWN),
+        ({"id": "date", "action": "answer", "value": "2026-10-01"},),
+        _CONFIRMED_MATERIAL,
+        generator,
+        "TRUSTED-REVISE",
+    )
+
+    instruction, material = generator.calls[0]
+    assert result.protocol.title == "Продажи"
+    assert len(generator.calls) == 1
+    assert instruction == "TRUSTED-REVISE"
+    assert "TRUSTED-REVISE" not in material
+    assert _CONFIRMED_MATERIAL in material
+    assert f"**Дата:** {PLACEHOLDER}" in material
+    assert "2026-10-01" in material
+    assert "Какого числа была встреча?" in material
+
+
+def test_revise_marks_skipped_answer_and_does_not_call_on_unresolved() -> None:
+    """Проверяет пропуск в материале и отказ без вызова порта."""
+    generator = _FakeGenerator(
+        GeneratedDraft(text=_VALID_MARKDOWN, finish_reason="stop"),
+    )
+
+    skipped = revise(
+        parse(_GAP_MARKDOWN),
+        ({"id": "date", "action": "skip"},),
+        _CONFIRMED_MATERIAL,
+        generator,
+        "TRUSTED-REVISE",
+    )
+    with pytest.raises(UnresolvedClarificationError):
+        revise(
+            parse(_GAP_MARKDOWN),
+            (),
+            _CONFIRMED_MATERIAL,
+            generator,
+            "TRUSTED-REVISE",
+        )
+
+    assert skipped.protocol.date == "2026-09-12"
+    assert "пропущено" in generator.calls[0][1]
+    assert len(generator.calls) == 1
 
 
 def test_finalize_http_returns_text_without_generator() -> None:
@@ -397,6 +446,81 @@ def test_finalize_http_replay_matches() -> None:
     assert first.json() == second.json()
 
 
+def test_revise_http_returns_model_text() -> None:
+    """Проверяет, что повторная сборка возвращает текст модели."""
+    rewritten = _VALID_MARKDOWN.replace("Тема", "Продажи")
+    gateway = FakeLlmGateway(result=_llm_result(rewritten))
+    client = TestClient(create_app(llm_gateway=gateway))
+
+    response = _post_revise(
+        client,
+        _csrf(client),
+        {
+            "text": _GAP_MARKDOWN,
+            "answers": [{"id": "date", "action": "answer", "value": "2026-10-01"}],
+            "material": _CONFIRMED_MATERIAL,
+        },
+    )
+
+    payload = response.json()
+    request = gateway.requests[0]
+    system = request.messages[0].content
+    user = request.messages[1].content
+    assert response.status_code == 200
+    assert parse(payload["text"]).title == "Продажи"
+    assert "Переписывание черновика" in system
+    assert "2026-10-01" not in system
+    assert "2026-10-01" in user
+    assert _CONFIRMED_MATERIAL in user
+    assert "<<<UNTRUSTED_MATERIAL>>>" in user
+    assert f"**Дата:** {PLACEHOLDER}" in user
+
+
+def test_revise_http_without_protocol_skill_is_unavailable(
+    tmp_path: Path,
+) -> None:
+    """Проверяет отказ повторной сборки, если скилл протокола отсутствует."""
+    client = TestClient(
+        create_app(
+            skills_root=tmp_path,
+            llm_gateway=FakeLlmGateway(result=_llm_result(_VALID_MARKDOWN)),
+        )
+    )
+
+    response = _post_revise(
+        client,
+        _csrf(client),
+        {
+            "text": _GAP_MARKDOWN,
+            "answers": [{"id": "date", "action": "skip"}],
+            "material": _CONFIRMED_MATERIAL,
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "generation_unavailable"
+
+
+def test_revise_http_without_reviser_is_unavailable() -> None:
+    """Проверяет отказ повторной сборки без порта модели."""
+    routed = _router_client(
+        _FakeGenerator(GeneratedDraft(text=_VALID_MARKDOWN, finish_reason="stop")),
+    )
+
+    response = _post_revise(
+        routed,
+        _CSRF,
+        {
+            "text": _GAP_MARKDOWN,
+            "answers": [{"id": "date", "action": "skip"}],
+            "material": _CONFIRMED_MATERIAL,
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "generation_unavailable"
+
+
 def test_finalize_does_not_call_generator_or_llm_gateway() -> None:
     """Проверяет отсутствие второго вызова модели и записи в usage."""
     generator = _FakeGenerator(
@@ -436,16 +560,21 @@ def test_finalize_does_not_call_generator_or_llm_gateway() -> None:
     assert gateway.requests == []
     assert "_require_generator" not in _finalize_route_source(routes_source)
     assert "skillhub.usage" not in routes_source
-    assert "Сформировать итоговый протокол" in html
+    assert "Записать ответы" in html
+    assert "Собрать заново" in html
     assert 'id="protocol-finalize-button"' in html
+    assert 'id="protocol-revise-button"' in html
     assert "/protocol/finalize" in script
+    assert "/protocol/revise" in script
     assert "innerHTML" not in script
     assert "baseText" in script
     assert "rowMemory" in script
-    assert "replayRemaining" in script
+    assert "allResolved" in script
     assert "previousText" not in script
     finalize_fn = _function_source(script, "submitFinalize")
+    revise_fn = _function_source(script, "submitRevise")
     assert finalize_fn.index("if (!response.ok)") < finalize_fn.index("writeMarkdown")
+    assert revise_fn.index("if (!response.ok)") < revise_fn.index("writeMarkdown")
     assert "unconfirmed" in script
 
 
@@ -563,9 +692,22 @@ def _csrf(client: TestClient) -> str:
         client: клиент одного экземпляра приложения.
     """
     parser = _CsrfParser()
-    parser.feed(client.get("/protocol").text)
+    parser.feed(client.get("/").text)
     assert len(parser.tokens) == 1
     return parser.tokens[0]
+
+
+def _llm_result(text: str) -> LlmResult:
+    """Собирает успешный ответ тестового шлюза.
+
+    Args:
+        text: нормативный Markdown, который вернёт шлюз.
+    """
+    return LlmResult(
+        text=text,
+        finish_reason="stop",
+        usage=LlmUsage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+    )
 
 
 def _post_finalize(
@@ -582,6 +724,25 @@ def _post_finalize(
     """
     return client.post(
         "/protocol/finalize",
+        json={"csrf_token": token, **fields},
+        headers=_ORIGIN,
+    )
+
+
+def _post_revise(
+    client: TestClient,
+    token: str,
+    fields: dict[str, object],
+) -> Response:
+    """Отправляет JSON-запрос повторной сборки с Origin и секретом.
+
+    Args:
+        client: HTTP-клиент проверяемого приложения.
+        token: ожидаемый секрет CSRF.
+        fields: прикладные поля тела запроса.
+    """
+    return client.post(
+        "/protocol/revise",
         json={"csrf_token": token, **fields},
         headers=_ORIGIN,
     )

@@ -1188,7 +1188,10 @@ def test_skills_page_has_accessible_semantics_and_local_reloading_state() -> Non
     assert 'role="status"' in response.text
     assert ("get", "/skills") in parser.forms
     assert ("post", "/skills/reload") in parser.forms
-    assert '<a href="/">Главная</a>' in response.text
+    assert 'href="/"' in response.text
+    assert "Главная" in response.text
+    assert "Как добавить скилл" in response.text
+    assert "Как добавить новый скилл" in response.text
     assert response.text.count('name="csrf_token"') == 1
 
 
